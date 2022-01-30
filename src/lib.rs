@@ -3,8 +3,6 @@ use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
 extern crate flate2;
-use flate2::read::ZlibDecoder;
-use std::io;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
@@ -66,16 +64,16 @@ pub enum MapBlockError {
 }
 
 pub struct NodeMetadata {
-	position: u16,
-	vars: HashMap<String, Vec<u8>>,
+	pub position: u16,
+	pub vars: HashMap<String, Vec<u8>>,
 }
 
 pub struct StaticObject {
-	type_id: u8,
-	x: i32,
-	y: i32,
-	z: i32,
-	data: Vec<u8>,
+	pub type_id: u8,
+	pub x: i32,
+	pub y: i32,
+	pub z: i32,
+	pub data: Vec<u8>,
 }
 
 pub struct NodeTimer {
@@ -110,7 +108,7 @@ impl MapBlock {
 		// Read all into a vector
 		let mut buffer = vec!();
 		let mut zstd = zstd::stream::Decoder::new(data).map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
-		zstd.read_to_end(&mut buffer).unwrap();
+		zstd.read_to_end(&mut buffer).map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
 		let mut data = buffer.as_slice();
 		// Read first few fields
 		let mut buffer = [0; 6];
