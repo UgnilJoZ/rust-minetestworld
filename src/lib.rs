@@ -1,9 +1,10 @@
 extern crate rusqlite;
-use rusqlite::Connection;
+use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
 extern crate flate2;
 use flate2::read::ZlibDecoder;
+use std::io;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
@@ -17,39 +18,44 @@ fn modulo(a: i64, b: i64) -> i64 {
 	((a % b + b) % b) as i64
 }
 
-fn getIntegerAsBlock(i: i64) -> Position {
-	fn unsignedToSigned(i: i64, max_positive: i64) -> i64 {
+fn get_integer_as_block(i: i64) -> Position {
+	fn unsigned_to_signed(i: i64, max_positive: i64) -> i64 {
 		if i < max_positive
 			{ i }
 		else
 			{ i - 2 * max_positive }
 	}
 
-	let x = unsignedToSigned(modulo(i, 4096), 2048) as i16;
+	let x = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
 	let mut i = (i - x as i64) / 4096;
-	let y = unsignedToSigned(modulo(i, 4096), 2048) as i16;
+	let y = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
 	i = (i - y as i64) / 4096;
-	let z = unsignedToSigned(modulo(i, 4096), 2048) as i16;
+	let z = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
 	return Position {x,y,z}
 }
 
-fn getBlockAsInteger(p: Position) -> i64 {
+fn get_block_as_integer(p: Position) -> i64 {
 	p.x as i64 + p.y as i64 * 4096 + p.z as i64 * 16777216
 }
 
-fn getAllPositions(conn: &Connection) -> Result<Vec<Position>, rusqlite::Error> {
-	match conn.prepare("SELECT pos FROM blocks") {
-		Ok(mut stmt) =>
-			match stmt.query_map(&[], |row| { getIntegerAsBlock(row.get(0)) }) {
-				Ok(pos_iter) => pos_iter.collect(),
-				Err(e) => Err(e),
-			},
-		Err(e) => Err(e),
-	}
+fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
+	let mut buf = [0; 1];
+	r.read(&mut buf)?;
+	Ok(buf[0])
 }
 
-fn getBlockData(conn: &Connection, pos: Position) -> Result<Vec<u8>, rusqlite::Error> {
-	conn.query_row("SELECT data FROM blocks WHERE pos = ?", &[&getBlockAsInteger(pos)], |row| row.get(0))
+pub fn get_all_positions(conn: &Connection) -> Result<Vec<Position>, rusqlite::Error> {
+	let mut stmt = conn.prepare("SELECT pos FROM blocks")?;
+	let result = stmt.query_map(NO_PARAMS, |row| {
+		row.get(0)
+		.map(|pos| get_integer_as_block(pos))
+	})?;
+	result.collect()
+}
+
+fn get_block_data(conn: &Connection, pos: Position) -> Result<Vec<u8>, rusqlite::Error> {
+	let pos = get_block_as_integer(pos);
+	conn.query_row("SELECT data FROM blocks WHERE pos = ?", &[pos], |row| row.get(0))
 }
 
 #[derive(Debug)]
@@ -73,41 +79,51 @@ pub struct StaticObject {
 }
 
 pub struct NodeTimer {
-	timer_position: u16,
-	timeout: i32,
-	elapsed: i32,
+	pub timer_position: u16,
+	pub timeout: i32,
+	pub elapsed: i32,
 }
 
 pub struct MapBlock {
-	map_format_version: u8,
-	flags: u8,
-	lightning: u16,
-	content_width: u8,
-	params_width: u8,
-	param0: [u16; 4096],
-	param1: [u8; 4096],
-	param2: [u8; 4096],
-	node_metadata: Vec<NodeMetadata>,
-	static_object_version: u8,
-	static_objects: Vec<StaticObject>,
-	timestamp: u32,
-	name_id_mappings: Vec<(u16, String)>,
-	node_timers: Vec<NodeTimer>,
+	pub map_format_version: u8,
+	pub flags: u8,
+	pub lightning: u16,
+	pub content_width: u8,
+	pub params_width: u8,
+	pub param0: [u16; 4096],
+	pub param1: [u8; 4096],
+	pub param2: [u8; 4096],
+	pub node_metadata: Vec<NodeMetadata>,
+	pub static_object_version: u8,
+	pub static_objects: Vec<StaticObject>,
+	pub timestamp: u32,
+	pub name_id_mappings: Vec<(u16, String)>,
+	pub node_timers: Vec<NodeTimer>,
 }
 
 impl MapBlock {
 	pub fn from_data<R: Read>(mut data: R) -> Result<MapBlock, MapBlockError> {
+		let map_version = read_u8(&mut data).map_err(|_| MapBlockError::BlobMalformed("Cannot read block data".to_string()))?;
+		if map_version != 29 {
+			return Err(MapBlockError::MapVersionError(map_version));
+		}
+		// Read all into a vector
+		let mut buffer = vec!();
+		let mut zstd = zstd::stream::Decoder::new(data).map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
+		zstd.read_to_end(&mut buffer).unwrap();
+		let mut data = buffer.as_slice();
 		// Read first few fields
 		let mut buffer = [0; 6];
+
 		if data.read_exact(&mut buffer).is_err() {
 			return Err(MapBlockError::BlobMalformed("Block data is way too short".to_string()));
 		}
 		let mut block = MapBlock {
-			map_format_version: buffer[0],
-			flags: buffer[1],
-			lightning: buffer[2] as u16 * 256 + buffer[3] as u16,
-			content_width: buffer[4],
-			params_width: buffer[5],
+			map_format_version: map_version,
+			flags: buffer[0],
+			lightning: buffer[1] as u16 * 256 + buffer[2] as u16,
+			content_width: buffer[3],
+			params_width: buffer[4],
 			param0: [0; 4096],
 			param1: [0; 4096],
 			param2: [0; 4096],
@@ -118,26 +134,24 @@ impl MapBlock {
 			name_id_mappings: vec!(),
 			node_timers: vec!(),
 		};
-		if block.map_format_version != 28 {
-			return Err(MapBlockError::MapVersionError(block.map_format_version));
-		}
 
 		// Read param0 + param1 + param2
-		let mut decompressor = ZlibDecoder::new(data);
 		let mut buffer = [0; 8192];
-		let (p0, p1, p2) = (decompressor.read_exact(&mut buffer), decompressor.read_exact(&mut block.param1), decompressor.read_exact(&mut block.param2));
+		let (p0, p1, p2) = (data.read_exact(&mut buffer), data.read_exact(&mut block.param1), data.read_exact(&mut block.param2));
 		if p0.is_err() || p1.is_err() || p2.is_err() {
 			return Err(MapBlockError::BlobMalformed("Block data is too short to read param_n".to_string()));
 		}
-		//if decompressor.bytes().count() != 0 {
-		//	return Err(MapBlockError::BlobMalformed("zlib-compressed data for param_n contains too much data.".to_string()));
-		//}
-		data = decompressor.into_inner();
+
+		// Save param0
+		for c in buffer.chunks(2).take(4096).enumerate() {
+			let index = c.0;
+			let bytes = c.1;
+			block.param0[index] = bytes[0] as u16 * 256 + bytes[1] as u16;
+		}
 		
 		// Read mapblock metadata
-		let mut decompressor = ZlibDecoder::new(data);
 		let mut buffer = [0; 3];
-		if decompressor.read_exact(&mut buffer).is_err() {
+		if data.read_exact(&mut buffer).is_err() {
 			return Err(MapBlockError::BlobMalformed("Block data is too short to read metadata".to_string()));
 		}
 
@@ -145,7 +159,7 @@ impl MapBlock {
 	}
 
 	pub fn from_sqlite(conn: &Connection, pos: Position) -> Result<MapBlock, MapBlockError> {
-		match getBlockData(conn, pos) {
+		match get_block_data(conn, pos) {
 			Ok(blob) => MapBlock::from_data(blob.as_slice()),
 			Err(e) => Err(MapBlockError::SQLiteError(e)),
 		}
@@ -156,11 +170,11 @@ impl MapBlock {
 mod tests {
 	use rusqlite::Connection;
 	use rusqlite::OpenFlags;
-	use getIntegerAsBlock;
-	use getAllPositions;
+	use get_integer_as_block;
+	use get_all_positions;
 	use MapBlock;
 	use Position;
-	use getBlockData;
+	use get_block_data;
 	#[test]
 	fn db_exists() {
 		Connection::open_with_flags("test.sqlite", OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
@@ -169,20 +183,33 @@ mod tests {
 	#[test]
 	fn can_query() {
 		let conn = Connection::open_with_flags("test.sqlite", OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-		assert_eq!(getAllPositions(&conn).unwrap().len(), 8398);
-		let block = getBlockData(&conn, Position { x: 8, y: 13, z: 8 }).unwrap();
-		assert_eq!(block.len(), 77);
+		assert_eq!(get_all_positions(&conn).unwrap().len(), 5923);
+		let block = get_block_data(&conn, Position { x: -13, y: -8, z: 2 }).unwrap();
+		assert_eq!(block.len(), 40);
 	}
 
 	#[test]
 	fn simple_math() {
-		assert_eq!(getIntegerAsBlock(134270984), Position { x: 8, y: 13, z: 8 });
+		assert_eq!(get_integer_as_block(134270984), Position { x: 8, y: 13, z: 8 });
+		assert_eq!(get_integer_as_block(-184549374), Position { x: 2, y: 0, z: -11 });
 	}
 
 	#[test]
 	fn can_parse_mapblock() {
+		MapBlock::from_data(std::fs::File::open("testmapblock").unwrap()).unwrap();
+	}
+
+	#[test]
+	fn can_parse_all_mapblocks() {
 		let conn = Connection::open_with_flags("test.sqlite", OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-		let block = MapBlock::from_sqlite(&conn, Position { x: 8, y: 13, z: 8 }).unwrap();
-		assert_eq!(block.map_format_version, 28);
+		let blocks: Vec<_> = get_all_positions(&conn)
+			.unwrap()
+			.into_iter()
+			.map(|pos| MapBlock::from_sqlite(&conn, pos))
+			.collect();
+		let succeeded = blocks.iter().filter(|b| b.is_ok()).count();
+		let failed = blocks.iter().filter(|b| b.is_err()).count();
+		eprintln!("Succeeded parsed blocks: {}\nFailed blocks: {}", succeeded, failed);
+		assert_eq!(failed, 0);
 	}
 }
