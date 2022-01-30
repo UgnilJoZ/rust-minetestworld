@@ -2,7 +2,6 @@ extern crate rusqlite;
 use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
-extern crate flate2;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
