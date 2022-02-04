@@ -42,6 +42,18 @@ fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
     Ok(buf[0])
 }
 
+fn read_u16_be(r: &mut impl Read) -> std::io::Result<u16> {
+    let mut buffer = [0; 2];
+    r.read_exact(&mut buffer)?;
+    Ok(u16::from_be_bytes(buffer))
+}
+
+fn read_u32_be(r: &mut impl Read) -> std::io::Result<u32> {
+    let mut buffer = [0; 4];
+    r.read_exact(&mut buffer)?;
+    Ok(u32::from_be_bytes(buffer))
+}
+
 pub fn get_all_positions(conn: &Connection) -> Result<Vec<Position>, rusqlite::Error> {
     let mut stmt = conn.prepare("SELECT pos FROM blocks")?;
     let result = stmt.query_map(NO_PARAMS, |row| row.get(0).map(get_integer_as_block))?;
@@ -55,11 +67,16 @@ fn get_block_data(conn: &Connection, pos: Position) -> Result<Vec<u8>, rusqlite:
     })
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum MapBlockError {
+    #[error("MapBlock malformed: {0}")]
     BlobMalformed(String),
+    #[error("Read error: {0}")]
+    ReadError(#[from] std::io::Error),
+    #[error("Wrong mapblock format: Version {0} is not supported")]
     MapVersionError(u8),
-    SQLiteError(rusqlite::Error),
+    #[error("Sqlite error: {0}")]
+    SQLiteError(#[from] rusqlite::Error),
 }
 
 pub struct NodeMetadata {
@@ -84,7 +101,9 @@ pub struct NodeTimer {
 pub struct MapBlock {
     pub map_format_version: u8,
     pub flags: u8,
-    pub lightning: u16,
+    pub lighting_complete: u16,
+    pub timestamp: u32,
+    pub name_id_mappings: HashMap<u16, Vec<u8>>,
     pub content_width: u8,
     pub params_width: u8,
     pub param0: [u16; 4096],
@@ -93,17 +112,14 @@ pub struct MapBlock {
     pub node_metadata: Vec<NodeMetadata>,
     pub static_object_version: u8,
     pub static_objects: Vec<StaticObject>,
-    pub timestamp: u32,
-    pub name_id_mappings: Vec<(u16, String)>,
-    pub node_timers: Vec<NodeTimer>,
 }
 
 impl MapBlock {
     pub fn from_data<R: Read>(mut data: R) -> Result<MapBlock, MapBlockError> {
-        let map_version = read_u8(&mut data)
+        let map_format_version = read_u8(&mut data)
             .map_err(|_| MapBlockError::BlobMalformed("Cannot read block data".to_string()))?;
-        if map_version != 29 {
-            return Err(MapBlockError::MapVersionError(map_version));
+        if map_format_version != 29 {
+            return Err(MapBlockError::MapVersionError(map_format_version));
         }
         // Read all into a vector
         let mut buffer = vec![];
@@ -112,60 +128,71 @@ impl MapBlock {
         zstd.read_to_end(&mut buffer)
             .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
         let mut data = buffer.as_slice();
-        // Read first few fields
-        let mut buffer = [0; 6];
 
-        if data.read_exact(&mut buffer).is_err() {
-            return Err(MapBlockError::BlobMalformed(
-                "Block data is way too short".to_string(),
-            ));
+        let flags = read_u8(&mut data)?;
+
+        let lighting_complete = read_u16_be(&mut data)?;
+
+        let timestamp = read_u32_be(&mut data)?;
+
+        read_u8(&mut data)?; // Why is this buffer byte necessary? It is not mentioned in the world format, AFAIK
+
+        let num_name_id_mappings = read_u16_be(&mut data)?;
+        let mut name_id_mappings = HashMap::new();
+        for _ in 0..num_name_id_mappings {
+            let id = read_u16_be(&mut data)?;
+            let mut name = vec![0; read_u16_be(&mut data)? as usize];
+            data.read_exact(&mut name)?;
+            
+            if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
+                return Err(MapBlockError::BlobMalformed(format!(
+                    "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
+                    String::from_utf8_lossy(&old_name),
+                    String::from_utf8_lossy(&name)
+                )));
+            }
         }
-        let mut block = MapBlock {
-            map_format_version: map_version,
-            flags: buffer[0],
-            lightning: buffer[1] as u16 * 256 + buffer[2] as u16,
-            content_width: buffer[3],
-            params_width: buffer[4],
+
+        let content_width = read_u8(&mut data)?;
+        if content_width != 2 {
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{content_width}\" is not the expected content_width"
+            )));
+        }
+
+        let params_width = read_u8(&mut data)?;
+        if params_width != 2 {
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{params_width}\" is not the expected params_width"
+            )));
+        }
+
+        let mut mapblock = MapBlock {
+            map_format_version,
+            flags,
+            lighting_complete,
+            timestamp,
+            name_id_mappings,
+            content_width,
+            params_width,
             param0: [0; 4096],
             param1: [0; 4096],
             param2: [0; 4096],
             node_metadata: vec![],
             static_object_version: 0,
             static_objects: vec![],
-            timestamp: 0xffffffff,
-            name_id_mappings: vec![],
-            node_timers: vec![],
         };
 
-        // Read param0 + param1 + param2
-        let mut buffer = [0; 8192];
-        let (p0, p1, p2) = (
-            data.read_exact(&mut buffer),
-            data.read_exact(&mut block.param1),
-            data.read_exact(&mut block.param2),
-        );
-        if p0.is_err() || p1.is_err() || p2.is_err() {
-            return Err(MapBlockError::BlobMalformed(
-                "Block data is too short to read param_n".to_string(),
-            ));
+        for p0 in mapblock.param0.iter_mut() {
+            *p0 = read_u16_be(&mut data)?;
         }
 
-        // Save param0
-        for c in buffer.chunks(2).take(4096).enumerate() {
-            let index = c.0;
-            let bytes = c.1;
-            block.param0[index] = bytes[0] as u16 * 256 + bytes[1] as u16;
-        }
+        data.read_exact(&mut mapblock.param1)?;
+        data.read_exact(&mut mapblock.param2)?;
 
-        // Read mapblock metadata
-        let mut buffer = [0; 3];
-        if data.read_exact(&mut buffer).is_err() {
-            return Err(MapBlockError::BlobMalformed(
-                "Block data is too short to read metadata".to_string(),
-            ));
-        }
+        // TODO node metadata, static objects
 
-        Ok(block)
+        Ok(mapblock)
     }
 
     pub fn from_sqlite(conn: &Connection, pos: Position) -> Result<MapBlock, MapBlockError> {
