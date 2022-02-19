@@ -1,7 +1,7 @@
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 
-use crate::map_block::{get_all_positions, MapBlock, MapBlockError};
+use crate::map_block::{get_all_positions, MapBlock, MapBlockError, NodeIter};
 use crate::positions::{get_block_as_integer, Position};
 
 #[derive(thiserror::Error, Debug)]
@@ -43,5 +43,12 @@ impl MapData {
 
     pub fn get_mapblock(&self, pos: Position) -> Result<MapBlock, MapDataError> {
         Ok(MapBlock::from_data(self.get_block_data(pos)?.as_slice())?)
+    }
+
+    /// Enumerate all nodes from the mapblock at `pos`
+    pub fn iter_mapblock_nodes(&self, pos: Position) -> Result<NodeIter, MapDataError> {
+        let data = self.get_block_data(pos)?;
+        let mapblock = MapBlock::from_data(data.as_slice())?;
+        Ok(NodeIter::new(mapblock, pos))
     }
 }

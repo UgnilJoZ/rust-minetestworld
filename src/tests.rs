@@ -1,4 +1,4 @@
-use positions::{get_integer_as_block, Position};
+use positions::{get_integer_as_block, Position, mapblock_node_position};
 use rusqlite::Connection;
 use rusqlite::OpenFlags;
 use MapBlock;
@@ -52,4 +52,29 @@ fn can_parse_all_mapblocks() {
     let failed = blocks.iter().filter(|b| b.is_err()).count();
     eprintln!("Succeeded parsed blocks: {succeeded}\nFailed blocks: {failed}");
     assert_eq!(failed, 0);
+}
+
+#[test]
+fn count_nodes() {
+    let mapdata = MapData::from_sqlite_file("test.sqlite").unwrap();
+    let count = mapdata.iter_mapblock_nodes(Position {
+        x: -13,
+        y: -8,
+        z: 2,
+    }).unwrap().count();
+    assert_eq!(count, 4096);
+}
+
+#[test]
+fn node_index() {
+    assert_eq!(mapblock_node_position(0), Position {
+        x: 0,
+        y: 0,
+        z: 0,
+    });
+    assert_eq!(mapblock_node_position(4095), Position {
+        x: 15,
+        y: 15,
+        z: 15,
+    })
 }

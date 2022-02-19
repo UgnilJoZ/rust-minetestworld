@@ -1,4 +1,4 @@
-use crate::positions::{get_integer_as_block, Position};
+use crate::positions::{get_integer_as_block, Position, mapblock_node_position};
 use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
@@ -58,6 +58,7 @@ pub struct NodeTimer {
     pub elapsed: i32,
 }
 
+/// A 'chunk' of nodes and the smallest unit saved in a backend
 pub struct MapBlock {
     pub map_format_version: u8,
     pub flags: u8,
@@ -76,8 +77,7 @@ pub struct MapBlock {
 
 impl MapBlock {
     pub fn from_data<R: Read>(mut data: R) -> Result<MapBlock, MapBlockError> {
-        let map_format_version = read_u8(&mut data)
-            .map_err(|_| MapBlockError::BlobMalformed("Cannot read block data".to_string()))?;
+        let map_format_version = read_u8(&mut data)?;
         if map_format_version != 29 {
             return Err(MapBlockError::MapVersionError(map_format_version));
         }
@@ -157,5 +157,62 @@ impl MapBlock {
         // TODO node metadata, static objects
 
         Ok(mapblock)
+    }
+
+    pub fn content_from_id(&self, content_id: u16) -> &[u8] {
+        self.name_id_mappings
+            .get(&content_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(b"unkown")
+    }
+}
+
+pub struct NodeIter {
+    mapblock: MapBlock,
+    mapblock_position: Position,
+    node_index: u16,
+}
+
+impl NodeIter {
+    pub(crate) fn new(mapblock: MapBlock, mapblock_position: Position) -> Self {
+        NodeIter {
+            mapblock,
+            mapblock_position,
+            node_index: 0,
+        }
+    }
+}
+
+/// A single voxel
+#[derive(Debug)]
+pub struct Node {
+    /// Content type
+    pub param0: String,
+    /// Lighting
+    pub param1: u8,
+    /// Additional data
+    pub param2: u8,
+}
+
+impl Iterator for NodeIter {
+    type Item = (Position, Node);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.node_index;
+        if index < 4096 {
+            self.node_index += 1;
+            let pos = self.mapblock_position + mapblock_node_position(index);
+            let param0 = self
+                .mapblock
+                .content_from_id(self.mapblock.param0[index as usize]);
+            let node = Node {
+                param0: String::from_utf8_lossy(param0).into_owned(),
+                param1: self.mapblock.param1[index as usize],
+                param2: self.mapblock.param2[index as usize],
+            };
+            Some((pos, node))
+        } else {
+            None
+        }
     }
 }

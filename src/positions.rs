@@ -5,6 +5,18 @@ pub struct Position {
     pub z: i16,
 }
 
+impl std::ops::Add for Position {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Position {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+}
+
 // While there is no modulo operator in rust, we'll use the remainder operator (%) to build one.
 pub(crate) fn modulo(a: i64, b: i64) -> i64 {
     ((a % b + b) % b) as i64
@@ -29,4 +41,18 @@ pub(crate) fn get_integer_as_block(i: i64) -> Position {
 
 pub(crate) fn get_block_as_integer(p: Position) -> i64 {
     p.x as i64 + p.y as i64 * 4096 + p.z as i64 * 16777216
+}
+
+
+pub(crate) fn mapblock_node_position(node_index: u16) -> Position {
+    let x = node_index % 16;
+    let i = node_index / 16;
+    let y = i % 16;
+    let i = node_index / 16;
+    let z = i % 16;
+    Position {
+        x: x as i16,
+        y: y as i16,
+        z: z as i16,
+    }
 }
