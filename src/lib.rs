@@ -135,7 +135,11 @@ impl MapBlock {
 
         let timestamp = read_u32_be(&mut data)?;
 
-        read_u8(&mut data)?; // Why is this buffer byte necessary? It is not mentioned in the world format, AFAIK
+        if read_u8(&mut data)? != 0 {
+            return Err(MapBlockError::BlobMalformed(
+                "name_id_mappings version byte is not zero".to_owned(),
+            ));
+        }
 
         let num_name_id_mappings = read_u16_be(&mut data)?;
         let mut name_id_mappings = HashMap::new();
@@ -143,7 +147,7 @@ impl MapBlock {
             let id = read_u16_be(&mut data)?;
             let mut name = vec![0; read_u16_be(&mut data)? as usize];
             data.read_exact(&mut name)?;
-            
+
             if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
                 return Err(MapBlockError::BlobMalformed(format!(
                     "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
