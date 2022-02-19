@@ -1,7 +1,8 @@
 extern crate rusqlite;
-use rusqlite::{Connection, NO_PARAMS};
+use rusqlite::{Connection, OpenFlags, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::Path;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
@@ -200,9 +201,33 @@ impl MapBlock {
     }
 
     pub fn from_sqlite(conn: &Connection, pos: Position) -> Result<MapBlock, MapBlockError> {
-        match get_block_data(conn, pos) {
-            Ok(blob) => MapBlock::from_data(blob.as_slice()),
-            Err(e) => Err(MapBlockError::SQLiteError(e)),
+        MapBlock::from_data(get_block_data(conn, pos)?.as_slice())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum MapDataError {
+    #[error("Sqlite error: {0}")]
+    SqliteError(#[from] rusqlite::Error),
+    #[error("MapBlockError: {0}")]
+    MapBlockError(#[from] MapBlockError),
+}
+
+pub enum MapData {
+    Sqlite(Connection),
+}
+
+impl MapData {
+    pub fn from_sqlite_file<P: AsRef<Path>>(filename: P) -> Result<MapData, MapDataError> {
+        Ok(MapData::Sqlite(Connection::open_with_flags(
+            filename,
+            OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?))
+    }
+
+    pub fn all_mapblock_positions(&self) -> Result<Vec<Position>, MapDataError> {
+        match self {
+            MapData::Sqlite(con) => Ok(get_all_positions(con)?),
         }
     }
 }
