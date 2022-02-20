@@ -1,7 +1,7 @@
 [package]
 name = "minetestworld"
 version = "0.1.0"
-authors = ["Joz <joz@spline.de>"]
+authors = ["Jan Ole Zabel <jan.zabel@posteo.de>"]
 
 [dependencies]
 thiserror = "1.0"

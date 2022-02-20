@@ -1,4 +1,6 @@
-use crate::positions::{get_integer_as_block, Position, mapblock_node_position};
+use crate::positions::{
+    get_integer_as_block, mapblock_node_index, mapblock_node_position, Position,
+};
 use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
@@ -25,6 +27,17 @@ pub fn get_all_positions(conn: &Connection) -> Result<Vec<Position>, rusqlite::E
     let mut stmt = conn.prepare("SELECT pos FROM blocks")?;
     let result = stmt.query_map(NO_PARAMS, |row| row.get(0).map(get_integer_as_block))?;
     result.collect()
+}
+
+/// A single voxel
+#[derive(Debug)]
+pub struct Node {
+    /// Content type
+    pub param0: String,
+    /// Lighting
+    pub param1: u8,
+    /// Additional data
+    pub param2: u8,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -165,6 +178,16 @@ impl MapBlock {
             .map(|v| v.as_slice())
             .unwrap_or(b"unkown")
     }
+
+    pub fn get_node_at(&self, x: u8, y: u8, z: u8) -> Node {
+        let index = mapblock_node_index(x, y, z) as usize;
+        let param0 = self.content_from_id(self.param0[index as usize]);
+        Node {
+            param0: String::from_utf8_lossy(param0).into_owned(),
+            param1: self.param1[index],
+            param2: self.param2[index],
+        }
+    }
 }
 
 pub struct NodeIter {
@@ -181,17 +204,6 @@ impl NodeIter {
             node_index: 0,
         }
     }
-}
-
-/// A single voxel
-#[derive(Debug)]
-pub struct Node {
-    /// Content type
-    pub param0: String,
-    /// Lighting
-    pub param1: u8,
-    /// Additional data
-    pub param2: u8,
 }
 
 impl Iterator for NodeIter {
