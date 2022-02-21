@@ -2,6 +2,9 @@
 name = "minetestworld"
 version = "0.1.0"
 authors = ["Jan Ole Zabel <jan.zabel@posteo.de>"]
+license = "AGPL-3.0"
+repository = "https://github.com/UgnilJoZ/rust-minetestworld/"
+description = "Read Minetest worlds"
 
 [dependencies]
 thiserror = "1.0"
