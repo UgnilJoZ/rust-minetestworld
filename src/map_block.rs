@@ -5,6 +5,9 @@ use rusqlite::{Connection, NO_PARAMS};
 use std::collections::HashMap;
 use std::io::Read;
 
+#[cfg(feature = "smartstring")]
+type String = smartstring::SmartString<smartstring::LazyCompact>;
+
 fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
@@ -97,9 +100,9 @@ impl MapBlock {
         // Read all into a vector
         let mut buffer = vec![];
         let mut zstd = zstd::stream::Decoder::new(data)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
+            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
         zstd.read_to_end(&mut buffer)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string()))?;
+            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
         let mut data = buffer.as_slice();
 
         let flags = read_u8(&mut data)?;
@@ -110,7 +113,7 @@ impl MapBlock {
 
         if read_u8(&mut data)? != 0 {
             return Err(MapBlockError::BlobMalformed(
-                "name_id_mappings version byte is not zero".to_owned(),
+                "name_id_mappings version byte is not zero".to_owned().into(),
             ));
         }
 
@@ -124,9 +127,9 @@ impl MapBlock {
             if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
                 return Err(MapBlockError::BlobMalformed(format!(
                     "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
-                    String::from_utf8_lossy(&old_name),
-                    String::from_utf8_lossy(&name)
-                )));
+                    std::string::String::from_utf8_lossy(&old_name),
+                    std::string::String::from_utf8_lossy(&name)
+                ).into()));
             }
         }
 
@@ -134,14 +137,14 @@ impl MapBlock {
         if content_width != 2 {
             return Err(MapBlockError::BlobMalformed(format!(
                 "\"{content_width}\" is not the expected content_width"
-            )));
+            ).into()));
         }
 
         let params_width = read_u8(&mut data)?;
         if params_width != 2 {
             return Err(MapBlockError::BlobMalformed(format!(
                 "\"{params_width}\" is not the expected params_width"
-            )));
+            ).into()));
         }
 
         let mut mapblock = MapBlock {
@@ -183,7 +186,7 @@ impl MapBlock {
         let index = mapblock_node_index(x, y, z) as usize;
         let param0 = self.content_from_id(self.param0[index as usize]);
         Node {
-            param0: String::from_utf8_lossy(param0).into_owned(),
+            param0: std::string::String::from_utf8_lossy(param0).into(),
             param1: self.param1[index],
             param2: self.param2[index],
         }
@@ -218,7 +221,7 @@ impl Iterator for NodeIter {
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);
             let node = Node {
-                param0: String::from_utf8_lossy(param0).into_owned(),
+                param0:  std::string::String::from_utf8_lossy(param0).into(),
                 param1: self.mapblock.param1[index as usize],
                 param2: self.mapblock.param2[index as usize],
             };

@@ -7,3 +7,6 @@ authors = ["Jan Ole Zabel <jan.zabel@posteo.de>"]
 thiserror = "1.0"
 rusqlite = "0.19.0"
 zstd = "0.10"
+
+[target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
+smartstring = {version = "0.2", optional = true}

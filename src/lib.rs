@@ -1,4 +1,6 @@
 extern crate rusqlite;
+#[cfg(feature = "smartstring")]
+extern crate smartstring;
 
 pub mod map_block;
 pub mod map_data;
