@@ -30,7 +30,7 @@ impl World {
 
     pub fn get_map(&self) -> Result<MapData, WorldError> {
         let World(path) = self;
-        Ok(MapData::from_sqlite_file(path.with_file_name("map.sqlite"))?)
+        Ok(MapData::from_sqlite_file(path.join("map.sqlite"))?)
     }
 }
 
