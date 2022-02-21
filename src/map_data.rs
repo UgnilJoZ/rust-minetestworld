@@ -46,9 +46,9 @@ impl MapData {
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
-    pub fn iter_mapblock_nodes(&self, pos: Position) -> Result<NodeIter, MapDataError> {
-        let data = self.get_block_data(pos)?;
+    pub fn iter_mapblock_nodes(&self, mapblock_pos: Position) -> Result<NodeIter, MapDataError> {
+        let data = self.get_block_data(mapblock_pos)?;
         let mapblock = MapBlock::from_data(data.as_slice())?;
-        Ok(NodeIter::new(mapblock, pos))
+        Ok(NodeIter::new(mapblock, mapblock_pos))
     }
 }
