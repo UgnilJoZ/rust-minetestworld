@@ -1,4 +1,4 @@
-extern crate rusqlite;
+extern crate async_std;
 #[cfg(feature = "smartstring")]
 extern crate smartstring;
 

@@ -7,6 +7,12 @@ pub struct Position {
     pub z: i16,
 }
 
+// impl<'r, R> sqlx::FromRow<'r, R> for Position where R: sqlx::Row {
+//     fn from_row(row: &'r R) -> Result<Self, sqlx::Error> {
+//         Ok(get_integer_as_block(row.get("pos")?))
+//     }
+// }
+
 impl std::ops::Add for Position {
     type Output = Self;
 

@@ -1,7 +1,5 @@
-use crate::positions::{
-    get_integer_as_block, mapblock_node_index, mapblock_node_position, Position,
-};
-use rusqlite::{Connection, NO_PARAMS};
+use crate::positions::{mapblock_node_index, mapblock_node_position, Position};
+
 use std::collections::HashMap;
 use std::io::Read;
 
@@ -26,12 +24,6 @@ fn read_u32_be(r: &mut impl Read) -> std::io::Result<u32> {
     Ok(u32::from_be_bytes(buffer))
 }
 
-pub fn get_all_positions(conn: &Connection) -> Result<Vec<Position>, rusqlite::Error> {
-    let mut stmt = conn.prepare("SELECT pos FROM blocks")?;
-    let result = stmt.query_map(NO_PARAMS, |row| row.get(0).map(get_integer_as_block))?;
-    result.collect()
-}
-
 /// A single voxel
 #[derive(Debug)]
 pub struct Node {
@@ -51,8 +43,6 @@ pub enum MapBlockError {
     ReadError(#[from] std::io::Error),
     #[error("Wrong mapblock format: Version {0} is not supported")]
     MapVersionError(u8),
-    #[error("Sqlite error: {0}")]
-    SQLiteError(#[from] rusqlite::Error),
 }
 
 pub struct NodeMetadata {
@@ -113,7 +103,9 @@ impl MapBlock {
 
         if read_u8(&mut data)? != 0 {
             return Err(MapBlockError::BlobMalformed(
-                "name_id_mappings version byte is not zero".to_owned().into(),
+                "name_id_mappings version byte is not zero"
+                    .to_owned()
+                    .into(),
             ));
         }
 
@@ -125,26 +117,29 @@ impl MapBlock {
             data.read_exact(&mut name)?;
 
             if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
-                return Err(MapBlockError::BlobMalformed(format!(
-                    "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
-                    std::string::String::from_utf8_lossy(&old_name),
-                    std::string::String::from_utf8_lossy(&name)
-                ).into()));
+                return Err(MapBlockError::BlobMalformed(
+                    format!(
+                        "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
+                        std::string::String::from_utf8_lossy(&old_name),
+                        std::string::String::from_utf8_lossy(&name)
+                    )
+                    .into(),
+                ));
             }
         }
 
         let content_width = read_u8(&mut data)?;
         if content_width != 2 {
-            return Err(MapBlockError::BlobMalformed(format!(
-                "\"{content_width}\" is not the expected content_width"
-            ).into()));
+            return Err(MapBlockError::BlobMalformed(
+                format!("\"{content_width}\" is not the expected content_width").into(),
+            ));
         }
 
         let params_width = read_u8(&mut data)?;
         if params_width != 2 {
-            return Err(MapBlockError::BlobMalformed(format!(
-                "\"{params_width}\" is not the expected params_width"
-            ).into()));
+            return Err(MapBlockError::BlobMalformed(
+                format!("\"{params_width}\" is not the expected params_width").into(),
+            ));
         }
 
         let mut mapblock = MapBlock {
@@ -221,7 +216,7 @@ impl Iterator for NodeIter {
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);
             let node = Node {
-                param0:  std::string::String::from_utf8_lossy(param0).into(),
+                param0: std::string::String::from_utf8_lossy(param0).into(),
                 param1: self.mapblock.param1[index as usize],
                 param2: self.mapblock.param2[index as usize],
             };
