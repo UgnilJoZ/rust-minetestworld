@@ -9,13 +9,33 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "smartstring")]
 use smartstring::alias::String;
 
+/// A Minetest world
+/// 
+/// ```
+/// use minetestworld::World;
+/// 
+/// let world = World::new("TestWorld");
+/// ```
 pub struct World(pub PathBuf);
 
 impl World {
+    /// Creates a new world object from a directory path.
+    /// 
+    /// No further checks are done, e.g. for existence of essential files.
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         World(path.as_ref().to_path_buf())
     }
 
+    /// Reads the basic metadata of the world.
+    ///
+    /// ```
+    /// use minetestworld::World;
+    /// use async_std::task;
+    /// 
+    /// let meta = task::block_on(async {
+    ///     World::new("TestWorld").get_world_metadata().await
+    /// }).unwrap();
+    /// ```
     pub async fn get_world_metadata(&self) -> std::io::Result<HashMap<String, String>> {
         let World(path) = self;
         let file = File::open(path.join("world.mt")).await?;
@@ -30,6 +50,16 @@ impl World {
         Ok(result)
     }
 
+    /// Reads the basic metadata of the world.
+    ///
+    /// ```
+    /// use minetestworld::World;
+    /// use async_std::task;
+    /// 
+    /// let meta = task::block_on(async {
+    ///     World::new("TestWorld").get_map().await.unwrap()
+    /// });
+    /// ```
     pub async fn get_map(&self) -> Result<MapData, WorldError> {
         let World(path) = self;
         Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)

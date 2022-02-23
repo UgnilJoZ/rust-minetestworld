@@ -19,6 +19,16 @@ pub enum MapData {
 }
 
 impl MapData {
+    /// Connects to the "map.sqlite" database.
+    ///
+    /// ```
+    /// use minetestworld::MapData;
+    /// use async_std::task;
+    /// 
+    /// let meta = task::block_on(async {
+    ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
+    /// });
+    /// ```
     pub async fn from_sqlite_file<P: AsRef<Path>>(filename: P) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
