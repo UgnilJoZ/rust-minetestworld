@@ -4,12 +4,12 @@ use crate::MapData;
 
 #[async_std::test]
 async fn db_exists() {
-    MapData::from_sqlite_file("test.sqlite").await.unwrap();
+    MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
 }
 
 #[async_std::test]
 async fn can_query() {
-    let mapdata = MapData::from_sqlite_file("test.sqlite").await.unwrap();
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     assert_eq!(mapdata.all_mapblock_positions().await.unwrap().len(), 5923);
     let block = mapdata
         .get_block_data(Position {
@@ -36,12 +36,12 @@ fn simple_math() {
 
 #[test]
 fn can_parse_mapblock() {
-    MapBlock::from_data(std::fs::File::open("testmapblock").unwrap()).unwrap();
+    MapBlock::from_data(std::fs::File::open("TestWorld/testmapblock").unwrap()).unwrap();
 }
 
 #[async_std::test]
 async fn can_parse_all_mapblocks() {
-    let mapdata = MapData::from_sqlite_file("test.sqlite").await.unwrap();
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     let positions: Vec<_> = mapdata.all_mapblock_positions().await.unwrap();
     let blocks: Vec<_> = futures::future::join_all(
         positions
@@ -57,7 +57,7 @@ async fn can_parse_all_mapblocks() {
 
 #[async_std::test]
 async fn count_nodes() {
-    let mapdata = MapData::from_sqlite_file("test.sqlite").await.unwrap();
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     let count = mapdata
         .iter_mapblock_nodes(Position {
             x: -13,
