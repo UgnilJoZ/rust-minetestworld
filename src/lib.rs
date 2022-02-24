@@ -7,7 +7,7 @@
 //!
 //! use async_std::task;
 //!
-//! let meta = task::block_on(async {
+//! task::block_on(async {
 //!     let blockpos = Position {
 //!         x: -13,
 //!         y: -8,
