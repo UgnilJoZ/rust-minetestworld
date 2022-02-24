@@ -3,7 +3,7 @@ use sqlx::prelude::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
 
-use crate::map_block::{MapBlock, MapBlockError, NodeIter};
+use crate::map_block::{MapBlock, MapBlockError, NodeIter, Node};
 use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
 
 #[derive(thiserror::Error, Debug)]
@@ -77,7 +77,7 @@ impl MapData {
     pub async fn iter_mapblock_nodes(
         &self,
         mapblock_pos: Position,
-    ) -> Result<NodeIter, MapDataError> {
+    ) -> Result<impl Iterator<Item=(Position, Node)>, MapDataError> {
         let data = self.get_block_data(mapblock_pos).await?;
         let mapblock = MapBlock::from_data(data.as_slice())?;
         Ok(NodeIter::new(mapblock, mapblock_pos))
