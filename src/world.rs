@@ -10,17 +10,17 @@ use std::path::{Path, PathBuf};
 use smartstring::alias::String;
 
 /// A Minetest world
-/// 
+///
 /// ```
 /// use minetestworld::World;
-/// 
+///
 /// let world = World::new("TestWorld");
 /// ```
 pub struct World(pub PathBuf);
 
 impl World {
     /// Creates a new world object from a directory path.
-    /// 
+    ///
     /// No further checks are done, e.g. for existence of essential files.
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         World(path.as_ref().to_path_buf())
@@ -31,7 +31,7 @@ impl World {
     /// ```
     /// use minetestworld::World;
     /// use async_std::task;
-    /// 
+    ///
     /// let meta = task::block_on(async {
     ///     World::new("TestWorld").get_world_metadata().await
     /// }).unwrap();
@@ -47,7 +47,10 @@ impl World {
         let mut lines = reader.lines();
         while let Some(line) = lines.next().await {
             if let Some((left, right)) = line?.split_once('=') {
-                result.insert(String::from(left.trim_end()), String::from(right.trim_start()));
+                result.insert(
+                    String::from(left.trim_end()),
+                    String::from(right.trim_start()),
+                );
             }
         }
         Ok(result)
@@ -55,12 +58,14 @@ impl World {
 
     async fn get_backend(&self) -> Result<String, WorldError> {
         match self.get_world_metadata().await {
-            Err(e) => if e.kind() == std::io::ErrorKind::NotFound {
-                eprintln!("No world.mt found, falling back to sqlite3 backend");
-                Ok(String::from("sqlite3"))
-            } else {
-                Err(WorldError::IOError(e))
-            },
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    eprintln!("No world.mt found, falling back to sqlite3 backend");
+                    Ok(String::from("sqlite3"))
+                } else {
+                    Err(WorldError::IOError(e))
+                }
+            }
             Ok(metadata) => match metadata.get("backend") {
                 Some(backend) => Ok(backend.clone()),
                 None => {
@@ -71,12 +76,12 @@ impl World {
         }
     }
 
-    /// Reads the basic metadata of the world.
+    /// Returns a handle to the map database.
     ///
     /// ```
     /// use minetestworld::World;
     /// use async_std::task;
-    /// 
+    ///
     /// let meta = task::block_on(async {
     ///     World::new("TestWorld").get_map().await.unwrap()
     /// });
@@ -99,5 +104,5 @@ pub enum WorldError {
     #[error("Map data error: {0}")]
     MapDataError(#[from] MapDataError),
     #[error("Unknown backend '{0}'")]
-    UnknownBackend(String)
+    UnknownBackend(String),
 }

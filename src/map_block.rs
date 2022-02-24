@@ -6,30 +6,31 @@ use std::io::Read;
 #[cfg(feature = "smartstring")]
 type String = smartstring::SmartString<smartstring::LazyCompact>;
 
-/// Side length of map blocks
-/// 
+/// Side length of map blocks.
+///
 /// The map data is divided into chunks of nodes (=voxels).
 /// Currently, a chunk consists of 16·16·16 nodes.
-/// 
+///
 /// The number of nodes a mapblock contains is [`MAPBLOCK_SIZE`].
-/// 
+///
 /// ```
 /// use minetestworld::MAPBLOCK_LENGTH;
-/// 
+///
 /// assert_eq!(MAPBLOCK_LENGTH, 16);
 /// ```
 pub const MAPBLOCK_LENGTH: u8 = 16;
 
-/// How many nodes are contained in a map block
-/// 
+/// How many nodes are contained in a map block.
+///
 /// This is [`MAPBLOCK_LENGTH`]³.
-/// 
+///
 /// ```
 /// use minetestworld::MAPBLOCK_SIZE;
-/// 
+///
 /// assert_eq!(MAPBLOCK_SIZE, 4096);
 /// ```
-pub const MAPBLOCK_SIZE: usize = MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize;
+pub const MAPBLOCK_SIZE: usize =
+    MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize;
 
 fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
     let mut buf = [0; 1];
@@ -62,10 +63,17 @@ pub struct Node {
 
 #[derive(thiserror::Error, Debug)]
 pub enum MapBlockError {
+    /// The mapblock did not follow the expected binary structure.
+    ///
+    /// This variant contains a more detailed error message.
     #[error("MapBlock malformed: {0}")]
     BlobMalformed(String),
     #[error("Read error: {0}")]
+    /// The underlying reader returned an error, which is contained.
     ReadError(#[from] std::io::Error),
+    /// The mapblock does not have a current enough version.
+    ///
+    /// The 'wrong' version is contained.
     #[error("Wrong mapblock format: Version {0} is not supported")]
     MapVersionError(u8),
 }
@@ -90,16 +98,35 @@ pub struct NodeTimer {
 }
 
 /// A 'chunk' of nodes and the smallest unit saved in a backend
+///
+/// Refer to <https://github.com/minetest/minetest/blob/master/doc/world_format.txt>
 pub struct MapBlock {
+    /// The format version of the mapblock. Currently supported is only version 29.
+    ///
+    /// An attempt to read a block of a previous version will result in a
+    /// [`MapBlockError::MapVersionError`].
     pub map_format_version: u8,
+    /// Flags telling if this chunk is underground etc.
     pub flags: u8,
+    /// Flags that indicate if the lighting is complete at each side.
     pub lighting_complete: u16,
+    /// Timestamp of last save , in seconds from game start
     pub timestamp: u32,
+    /// Maps each numeric content ID to the content name.
+    ///
+    /// This is used to efficiently store nodes.
     pub name_id_mappings: HashMap<u16, Vec<u8>>,
+    /// Number bytes used for the content (param0) field of the nodes
     pub content_width: u8,
+    /// Additional node params, always 2
     pub params_width: u8,
+    /// The content ID of each node in the mapblock.
+    ///
+    /// It can be mapped to names via [`MapBlock::name_id_mappings`]
     pub param0: [u16; 4096],
+    /// The param1 field of every node
     pub param1: [u8; 4096],
+    /// The param2 field of every node
     pub param2: [u8; 4096],
     pub node_metadata: Vec<NodeMetadata>,
     pub static_object_version: u8,
@@ -213,6 +240,10 @@ impl MapBlock {
     }
 }
 
+/// Iterates through the nodes in a mapblock.
+///
+/// This yields a tuple in the form ([relative_position][`Position`],
+/// [node][`Node`]).
 pub struct NodeIter {
     mapblock: MapBlock,
     mapblock_position: Position,
@@ -230,6 +261,9 @@ impl NodeIter {
 }
 
 impl Iterator for NodeIter {
+    /// The type this iterator yields.
+    ///
+    /// This is a tuple consisting if the node and its relative position in the chunk.
     type Item = (Position, Node);
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -3,7 +3,7 @@ use sqlx::prelude::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
 
-use crate::map_block::{MapBlock, MapBlockError, NodeIter, Node};
+use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
 
 #[derive(thiserror::Error, Debug)]
@@ -24,7 +24,7 @@ impl MapData {
     /// ```
     /// use minetestworld::MapData;
     /// use async_std::task;
-    /// 
+    ///
     /// let meta = task::block_on(async {
     ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     /// });
@@ -41,7 +41,7 @@ impl MapData {
     }
 
     /// Returns the positions of all mapblocks
-    /// 
+    ///
     /// Note that the unit of the coordinates will be
     /// [MAPBLOCK_LENGTH][`crate::map_block::MAPBLOCK_LENGTH`].
     pub async fn all_mapblock_positions(&self) -> Result<Vec<Position>, sqlx::Error> {
@@ -81,7 +81,7 @@ impl MapData {
     pub async fn iter_mapblock_nodes(
         &self,
         mapblock_pos: Position,
-    ) -> Result<impl Iterator<Item=(Position, Node)>, MapDataError> {
+    ) -> Result<impl Iterator<Item = (Position, Node)>, MapDataError> {
         let data = self.get_block_data(mapblock_pos).await?;
         let mapblock = MapBlock::from_data(data.as_slice())?;
         Ok(NodeIter::new(mapblock, mapblock_pos))
