@@ -40,6 +40,10 @@ impl MapData {
         ))
     }
 
+    /// Returns the positions of all mapblocks
+    /// 
+    /// Note that the unit of the coordinates will be
+    /// [MAPBLOCK_LENGTH][`crate::map_block::MAPBLOCK_LENGTH`].
     pub async fn all_mapblock_positions(&self) -> Result<Vec<Position>, sqlx::Error> {
         match self {
             MapData::Sqlite(pool) => {

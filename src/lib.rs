@@ -14,5 +14,8 @@ pub use map_data::MapDataError;
 pub use positions::Position;
 pub use world::World;
 
+pub use map_block::MAPBLOCK_LENGTH;
+pub use map_block::MAPBLOCK_SIZE;
+
 #[cfg(test)]
 mod tests;

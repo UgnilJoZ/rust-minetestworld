@@ -6,6 +6,31 @@ use std::io::Read;
 #[cfg(feature = "smartstring")]
 type String = smartstring::SmartString<smartstring::LazyCompact>;
 
+/// Side length of map blocks
+/// 
+/// The map data is divided into chunks of nodes (=voxels).
+/// Currently, a chunk consists of 16·16·16 nodes.
+/// 
+/// The number of nodes a mapblock contains is [`MAPBLOCK_SIZE`].
+/// 
+/// ```
+/// use minetestworld::MAPBLOCK_LENGTH;
+/// 
+/// assert_eq!(MAPBLOCK_LENGTH, 16);
+/// ```
+pub const MAPBLOCK_LENGTH: u8 = 16;
+
+/// How many nodes are contained in a map block
+/// 
+/// This is [`MAPBLOCK_LENGTH`]³.
+/// 
+/// ```
+/// use minetestworld::MAPBLOCK_SIZE;
+/// 
+/// assert_eq!(MAPBLOCK_SIZE, 4096);
+/// ```
+pub const MAPBLOCK_SIZE: usize = MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize;
+
 fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
@@ -150,9 +175,9 @@ impl MapBlock {
             name_id_mappings,
             content_width,
             params_width,
-            param0: [0; 4096],
-            param1: [0; 4096],
-            param2: [0; 4096],
+            param0: [0; MAPBLOCK_SIZE],
+            param1: [0; MAPBLOCK_SIZE],
+            param2: [0; MAPBLOCK_SIZE],
             node_metadata: vec![],
             static_object_version: 0,
             static_objects: vec![],
