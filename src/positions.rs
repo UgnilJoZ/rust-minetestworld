@@ -2,8 +2,11 @@ use std::ops::{Add, Rem};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
+    /// "West direction"
     pub x: i16,
+    /// "Up" direction
     pub y: i16,
+    /// "North" direction
     pub z: i16,
 }
 

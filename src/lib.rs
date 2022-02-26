@@ -7,12 +7,13 @@
 //!
 //! use async_std::task;
 //!
+//! let blockpos = Position {
+//!     x: -13,
+//!     y: -8,
+//!     z: 2,
+//! };
+//! 
 //! task::block_on(async {
-//!     let blockpos = Position {
-//!         x: -13,
-//!         y: -8,
-//!         z: 2,
-//!     };
 //!     let world = World::new("TestWorld");
 //!     let mapdata = world.get_map().await.unwrap();
 //!     for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
