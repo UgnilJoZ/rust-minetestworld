@@ -46,10 +46,10 @@ impl World {
         let mut result = HashMap::new();
         let mut lines = reader.lines();
         while let Some(line) = lines.next().await {
-            if let Some((left, right)) = line?.split_once('=') {
+            if let Some((key, value)) = line?.split_once('=') {
                 result.insert(
-                    String::from(left.trim_end()),
-                    String::from(right.trim_start()),
+                    String::from(key.trim_end()),
+                    String::from(value.trim_start()),
                 );
             }
         }
