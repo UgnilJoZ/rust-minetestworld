@@ -1,6 +1,6 @@
 use futures::stream::TryStreamExt;
-use redis::aio::MultiplexedConnection as RedisConn;
-use redis::AsyncCommands;
+#[cfg(feature = "redis")]
+use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 use sqlx::prelude::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
@@ -16,6 +16,7 @@ use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
 pub enum MapDataError {
     #[error("Database error: {0}")]
     SqlError(#[from] sqlx::Error),
+    #[cfg(feature = "redis")]
     #[error("Database error: {0}")]
     RedisError(#[from] redis::RedisError),
     #[error("MapBlockError: {0}")]
@@ -24,6 +25,7 @@ pub enum MapDataError {
 
 pub enum MapData {
     Sqlite(SqlitePool),
+    #[cfg(feature = "redis")]
     Redis { connection: RedisConn, hash: String },
 }
 
@@ -49,6 +51,7 @@ impl MapData {
         ))
     }
 
+    #[cfg(feature = "redis")]
     pub async fn from_redis_connection_params(
         host: Host,
         port: Option<u16>,
@@ -83,6 +86,7 @@ impl MapData {
                 }
                 Ok(result)
             }
+            #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 let mut v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
                 Ok(v.drain(..).map(|i| get_integer_as_block(i)).collect())
@@ -99,6 +103,7 @@ impl MapData {
                 .fetch_one(pool)
                 .await?
                 .try_get("data")?),
+            #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 Ok(connection.clone().hget(hash.to_string(), pos).await?)
             }

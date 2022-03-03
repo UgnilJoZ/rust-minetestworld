@@ -88,29 +88,34 @@ impl World {
     /// ```
     pub async fn get_map(&self) -> Result<MapData, WorldError> {
         let backend = self.get_backend().await?;
-        if backend == "sqlite3" {
-            let World(path) = self;
-            Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
-        } else if backend == "redis" {
-            let meta = self.get_world_metadata().await?;
-            let host = meta
-                .get("redis_address")
-                .ok_or(WorldError::BogusBackendConfig(String::from(
-                    "The backend 'redis' requires a 'redis_address' in world.mt",
-                )))?;
-            let host = url::Host::parse_opaque(host)?;
-            let port = meta
-                .get("redis_port")
-                .map(|p| u16::from_str_radix(p, 10))
-                .transpose()?;
-            let hash = meta
-                .get("redis_hash")
-                .ok_or(WorldError::BogusBackendConfig(String::from(
-                    "The backend 'redis' requires a 'redis_hash' in world.mt",
-                )))?;
-            Ok(MapData::from_redis_connection_params(host, port, hash.clone()).await?)
-        } else {
-            Err(WorldError::UnknownBackend(backend))
+        match backend.as_ref() {
+            "sqlite3" => {
+                let World(path) = self;
+                Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
+            }
+            #[cfg(feature = "redis")]
+            "redis" => {
+                let meta = self.get_world_metadata().await?;
+                let host = meta
+                    .get("redis_address")
+                    .ok_or(WorldError::BogusBackendConfig(String::from(
+                        "The backend 'redis' requires a 'redis_address' in world.mt",
+                    )))?;
+                let host = url::Host::parse_opaque(host)?;
+                let port = meta
+                    .get("redis_port")
+                    .map(|p| u16::from_str_radix(p, 10))
+                    .transpose()?;
+                let hash = meta
+                    .get("redis_hash")
+                    .ok_or(WorldError::BogusBackendConfig(String::from(
+                        "The backend 'redis' requires a 'redis_hash' in world.mt",
+                    )))?;
+                Ok(MapData::from_redis_connection_params(host, port, hash.clone()).await?)
+            },
+            _ => {
+                Err(WorldError::UnknownBackend(backend))
+            }
         }
     }
 }
