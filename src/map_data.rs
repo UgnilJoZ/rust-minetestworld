@@ -60,6 +60,7 @@ impl MapData {
         }
     }
 
+    /// Queries the backend for the data of a single mapblock
     pub async fn get_block_data(&self, pos: Position) -> Result<Vec<u8>, MapDataError> {
         let pos = get_block_as_integer(pos);
         match self {

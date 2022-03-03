@@ -134,6 +134,7 @@ pub struct MapBlock {
 }
 
 impl MapBlock {
+    /// Constructs a Mapblock from its binary representation
     pub fn from_data<R: Read>(mut data: R) -> Result<MapBlock, MapBlockError> {
         let map_format_version = read_u8(&mut data)?;
         if map_format_version != 29 {
