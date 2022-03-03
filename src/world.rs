@@ -82,7 +82,7 @@ impl World {
     /// use minetestworld::World;
     /// use async_std::task;
     ///
-    /// let meta = task::block_on(async {
+    /// let map_data = task::block_on(async {
     ///     World::new("TestWorld").get_map().await.unwrap()
     /// });
     /// ```
@@ -91,6 +91,24 @@ impl World {
         if backend == "sqlite3" {
             let World(path) = self;
             Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
+        } else if backend == "redis" {
+            let meta = self.get_world_metadata().await?;
+            let host = meta
+                .get("redis_address")
+                .ok_or(WorldError::BogusBackendConfig(String::from(
+                    "The backend 'redis' requires a 'redis_address' in world.mt",
+                )))?;
+            let host = url::Host::parse_opaque(host)?;
+            let port = meta
+                .get("redis_port")
+                .map(|p| u16::from_str_radix(p, 10))
+                .transpose()?;
+            let hash = meta
+                .get("redis_hash")
+                .ok_or(WorldError::BogusBackendConfig(String::from(
+                    "The backend 'redis' requires a 'redis_hash' in world.mt",
+                )))?;
+            Ok(MapData::from_redis_connection_params(host, port, hash.clone()).await?)
         } else {
             Err(WorldError::UnknownBackend(backend))
         }
@@ -105,4 +123,10 @@ pub enum WorldError {
     MapDataError(#[from] MapDataError),
     #[error("Unknown backend '{0}'")]
     UnknownBackend(String),
+    #[error("Bogus backend config: {0}")]
+    BogusBackendConfig(String),
+    #[error("Host parse error: {0}")]
+    ParseUrlError(#[from] url::ParseError),
+    #[error("Parse int error: {0}")]
+    ParseIntError(#[from] std::num::ParseIntError),
 }

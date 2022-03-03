@@ -12,7 +12,7 @@
 //!     y: -8,
 //!     z: 2,
 //! };
-//! 
+//!
 //! task::block_on(async {
 //!     let world = World::new("TestWorld");
 //!     let mapdata = world.get_map().await.unwrap();
