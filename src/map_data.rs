@@ -26,7 +26,10 @@ pub enum MapDataError {
 pub enum MapData {
     Sqlite(SqlitePool),
     #[cfg(feature = "redis")]
-    Redis { connection: RedisConn, hash: String },
+    Redis {
+        connection: RedisConn,
+        hash: String,
+    },
 }
 
 impl MapData {
@@ -60,8 +63,7 @@ impl MapData {
         Ok(MapData::Redis {
             connection: redis::Client::open(format!(
                 "redis://{host}{}/",
-                port.map(|p| format!(":{p}"))
-                    .unwrap_or(std::string::String::new())
+                port.map(|p| format!(":{p}")).unwrap_or_default()
             ))?
             .get_multiplexed_async_std_connection()
             .await?,
@@ -89,7 +91,7 @@ impl MapData {
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 let mut v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.drain(..).map(|i| get_integer_as_block(i)).collect())
+                Ok(v.drain(..).map(get_integer_as_block).collect())
             }
         }
     }
