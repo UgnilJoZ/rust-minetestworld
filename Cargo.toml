@@ -15,10 +15,10 @@ redis = { version = "0.21.0", features = [ "async-std-comp" ], optional = true }
 url = "2.2"
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
-zstd = "0.10"
+zstd = "0.11"
 
 [target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
-smartstring = {version = "0.2", optional = true}
+smartstring = {version = "1", optional = true}
 
 [features]
 default = ["redis", "sqlite"]
