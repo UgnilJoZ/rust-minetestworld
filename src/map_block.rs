@@ -1,3 +1,5 @@
+//! Contains data types and constants to work with MapBlocks
+
 use crate::positions::{mapblock_node_index, mapblock_node_position, Position};
 
 use std::collections::HashMap;
@@ -61,6 +63,7 @@ pub struct Node {
     pub param2: u8,
 }
 
+/// An error during the decoding of a MapBlock
 #[derive(thiserror::Error, Debug)]
 pub enum MapBlockError {
     /// The mapblock did not follow the expected binary structure.
@@ -78,22 +81,39 @@ pub enum MapBlockError {
     MapVersionError(u8),
 }
 
+/// Metadata of a node
+/// 
+/// e.g. the inventory of a chest or the text of a sign
 pub struct NodeMetadata {
+    /// The node index in the flat node array
     pub position: u16,
+    /// A dictionary containing the metadata values
     pub vars: HashMap<String, Vec<u8>>,
 }
 
+/// Objects in the world that are not nodes
+/// 
+/// For example a LuaEntity
 pub struct StaticObject {
+    /// Type ID
     pub type_id: u8,
+    /// x coordinate
     pub x: i32,
+    /// y coordinate
     pub y: i32,
+    /// z coordinate
     pub z: i32,
+    /// The object's data
     pub data: Vec<u8>,
 }
 
+/// Represents a running node timer
 pub struct NodeTimer {
+    ///The node index in the flat node array
     pub timer_position: u16,
+    /// Timeout in milliseconds
     pub timeout: i32,
+    /// Elapsed time in milliseconds
     pub elapsed: i32,
 }
 
@@ -128,8 +148,11 @@ pub struct MapBlock {
     pub param1: [u8; 4096],
     /// The param2 field of every node
     pub param2: [u8; 4096],
+    /// Nodfe metadata
     pub node_metadata: Vec<NodeMetadata>,
+    /// Static object version
     pub static_object_version: u8,
+    /// Objects that are no nodes
     pub static_objects: Vec<StaticObject>,
 }
 
@@ -223,6 +246,7 @@ impl MapBlock {
         Ok(mapblock)
     }
 
+    /// Gets the content type string from a content ID
     pub fn content_from_id(&self, content_id: u16) -> &[u8] {
         self.name_id_mappings
             .get(&content_id)
@@ -230,6 +254,7 @@ impl MapBlock {
             .unwrap_or(b"unkown")
     }
 
+    /// Queries the mapblock for a node on the given relative coordinates
     pub fn get_node_at(&self, x: u8, y: u8, z: u8) -> Node {
         let index = mapblock_node_index(x, y, z) as usize;
         let param0 = self.content_from_id(self.param0[index as usize]);

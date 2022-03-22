@@ -1,3 +1,4 @@
+//! Contains a type to read a world's map data
 use futures::stream::TryStreamExt;
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
@@ -12,22 +13,33 @@ use smartstring::alias::String;
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
 
+/// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
 pub enum MapDataError {
     #[error("Database error: {0}")]
+    /// sqlx based error. This covers Sqlite and Postgres errors.
     SqlError(#[from] sqlx::Error),
     #[cfg(feature = "redis")]
     #[error("Database error: {0}")]
+    /// Redis connection error
     RedisError(#[from] redis::RedisError),
     #[error("MapBlockError: {0}")]
+    /// Error while reading a map block
     MapBlockError(#[from] MapBlockError),
 }
 
+/// A handle to the world data
+/// 
+/// Can be used to query MapBlocks and nodes.
 pub enum MapData {
+    /// This variant covers the SQLite and PostgreSQL database backends
     Sqlite(SqlitePool),
     #[cfg(feature = "redis")]
+    /// This variant supports Redis as database backend
     Redis {
+        /// The connection to the Redis instance
         connection: RedisConn,
+        /// The hash in which the world's data is stored in
         hash: String,
     },
 }
@@ -55,6 +67,7 @@ impl MapData {
     }
 
     #[cfg(feature = "redis")]
+    /// Connects to a Redis server given the connection parameters
     pub async fn from_redis_connection_params(
         host: Host,
         port: Option<u16>,
@@ -112,6 +125,9 @@ impl MapData {
         }
     }
 
+    /// Queries the backend for a specific map block
+    /// 
+    /// `pos` is a map block position.
     pub async fn get_mapblock(&self, pos: Position) -> Result<MapBlock, MapDataError> {
         Ok(MapBlock::from_data(
             self.get_block_data(pos).await?.as_slice(),
@@ -119,6 +135,8 @@ impl MapData {
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
+    /// 
+    /// Returns all nodes along with their relative position within the map block
     pub async fn iter_mapblock_nodes(
         &self,
         mapblock_pos: Position,

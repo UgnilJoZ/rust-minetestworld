@@ -1,10 +1,24 @@
 //! This crate lets you read all chunks of a minetest world,
 //! as long as they are already saved in map format version 29.
+//! 
+//! ## Terminology
+//! ### Node
+//! [Nodes](`Node`) are single voxels that the world data consist of. It has three properties:
+//! 1. A content type string (like `air` or `default:dirt`)
+//! 2. Flags to determine lighting rendering
+//! 3. Additional data that can be interpreted based on the content type (e.g. flow information for liquids)
+//! 
+//! This term might originate in the Irrlicht engine.
+//! 
+//! ## MapBlock
+//! The world is divided into chunks that are called [map blocks](`MapBlock`).
+//! A map block contains 16·16·16 nodes as well as objects and metadata.
+//! 
+//! ## Example usage
 //!
-//! An example that reads all nodes of a specific chunk:
+//! An example that reads all nodes of a specific map block:
 //! ```
 //! use minetestworld::{World, Position};
-//!
 //! use async_std::task;
 //!
 //! let blockpos = Position {
@@ -20,6 +34,9 @@
 //!         println!("{pos:?}, {node:?}");
 //!     }
 //! });
+//! ```
+#![warn(missing_docs)]
+#![forbid(unsafe_code)]
 
 extern crate async_std;
 #[cfg(feature = "smartstring")]

@@ -1,3 +1,5 @@
+//! Contains the [`World`] along with [`WorldError`]
+
 use crate::MapData;
 use crate::MapDataError;
 use async_std::fs::File;
@@ -115,18 +117,27 @@ impl World {
     }
 }
 
+/// Represents a failure to interact with the world
 #[derive(thiserror::Error, Debug)]
 pub enum WorldError {
     #[error("IO error: {0}")]
+    /// An IO error happened
     IOError(#[from] std::io::Error),
     #[error("Map data error: {0}")]
+    /// The map data backend returned an error
     MapDataError(#[from] MapDataError),
     #[error("Unknown backend '{0}'")]
+    /// The map data backend is not known or implemented
     UnknownBackend(String),
     #[error("Bogus backend config: {0}")]
+    /// The map data baackend config contains an error
+    /// 
+    /// A description is included.
     BogusBackendConfig(String),
     #[error("Host parse error: {0}")]
+    /// Failure to parse an URL
     ParseUrlError(#[from] url::ParseError),
     #[error("Parse int error: {0}")]
+    /// Failure to parse an int from a string
     ParseIntError(#[from] std::num::ParseIntError),
 }
