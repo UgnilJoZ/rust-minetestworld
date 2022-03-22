@@ -91,6 +91,7 @@ impl World {
     pub async fn get_map(&self) -> Result<MapData, WorldError> {
         let backend = self.get_backend().await?;
         match backend.as_ref() {
+            #[cfg(feature = "sqlite")]
             "sqlite3" => {
                 let World(path) = self;
                 Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)

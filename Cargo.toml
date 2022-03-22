@@ -10,8 +10,8 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1.0"
-sqlx = { version = "0.5", features = [ "runtime-async-std-native-tls", "sqlite" ] }
-redis = { version = "0.21.0", features = ["async-std-comp"], optional = true }
+sqlx = { version = "0.5", features = [ "runtime-async-std-native-tls" ], optional = true }
+redis = { version = "0.21.0", features = [ "async-std-comp" ], optional = true }
 url = "2.2"
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
@@ -19,3 +19,8 @@ zstd = "0.10"
 
 [target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
 smartstring = {version = "0.2", optional = true}
+
+[features]
+default = ["redis", "sqlite"]
+sqlite = ["sqlx/sqlite"]
+postgres = ["sqlx/postgres"]

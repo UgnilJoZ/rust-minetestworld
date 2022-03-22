@@ -16,6 +16,7 @@ use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
 /// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
 pub enum MapDataError {
+    #[cfg(any(feature = "sqlite", feature = "postgres"))]
     #[error("Database error: {0}")]
     /// sqlx based error. This covers Sqlite and Postgres errors.
     SqlError(#[from] sqlx::Error),
@@ -32,6 +33,7 @@ pub enum MapDataError {
 /// 
 /// Can be used to query MapBlocks and nodes.
 pub enum MapData {
+    #[cfg(any(feature = "sqlite", feature = "postgres"))]
     /// This variant covers the SQLite and PostgreSQL database backends
     Sqlite(SqlitePool),
     #[cfg(feature = "redis")]
@@ -45,6 +47,7 @@ pub enum MapData {
 }
 
 impl MapData {
+    #[cfg(feature = "sqlite")]
     /// Connects to the "map.sqlite" database.
     ///
     /// ```
@@ -90,6 +93,7 @@ impl MapData {
     /// [MAPBLOCK_LENGTH][`crate::map_block::MAPBLOCK_LENGTH`].
     pub async fn all_mapblock_positions(&self) -> Result<Vec<Position>, MapDataError> {
         match self {
+            #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => {
                 let mut result = vec![];
                 let mut rows = sqlx::query("SELECT pos FROM blocks")
@@ -113,6 +117,7 @@ impl MapData {
     pub async fn get_block_data(&self, pos: Position) -> Result<Vec<u8>, MapDataError> {
         let pos = get_block_as_integer(pos);
         match self {
+            #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => Ok(sqlx::query("SELECT data FROM blocks WHERE pos = ?")
                 .bind(pos)
                 .fetch_one(pool)
