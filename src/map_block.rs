@@ -82,7 +82,7 @@ pub enum MapBlockError {
 }
 
 /// Metadata of a node
-/// 
+///
 /// e.g. the inventory of a chest or the text of a sign
 pub struct NodeMetadata {
     /// The node index in the flat node array
@@ -92,7 +92,7 @@ pub struct NodeMetadata {
 }
 
 /// Objects in the world that are not nodes
-/// 
+///
 /// For example a LuaEntity
 pub struct StaticObject {
     /// Type ID
@@ -166,9 +166,9 @@ impl MapBlock {
         // Read all into a vector
         let mut buffer = vec![];
         let mut zstd = zstd::stream::Decoder::new(data)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
+            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".into()))?;
         zstd.read_to_end(&mut buffer)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
+            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".into()))?;
         let mut data = buffer.as_slice();
 
         let flags = read_u8(&mut data)?;

@@ -1,8 +1,12 @@
 //! Contains a type to read a world's map data
+use async_std::sync::{Arc, Mutex};
 use futures::stream::TryStreamExt;
+#[cfg(feature = "leveldb")]
+use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 use sqlx::prelude::*;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
 use url::Host;
@@ -24,13 +28,20 @@ pub enum MapDataError {
     #[error("Database error: {0}")]
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
+    #[cfg(feature = "leveldb")]
+    #[error("Database error: {0}")]
+    /// LevelDB error
+    LevelDbError(LevelDBError),
     #[error("MapBlockError: {0}")]
     /// Error while reading a map block
     MapBlockError(#[from] MapBlockError),
+    /// This mapblock does not exist
+    #[error("MapBlock {0} does not exist")]
+    MapBlockNonexistent(i64),
 }
 
 /// A handle to the world data
-/// 
+///
 /// Can be used to query MapBlocks and nodes.
 pub enum MapData {
     #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -44,6 +55,9 @@ pub enum MapData {
         /// The hash in which the world's data is stored in
         hash: String,
     },
+    #[cfg(feature = "leveldb")]
+    /// This variant is a thread-safe open LevelDB
+    LevelDb(Arc<Mutex<LevelDb>>),
 }
 
 impl MapData {
@@ -58,7 +72,7 @@ impl MapData {
     ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     /// });
     /// ```
-    pub async fn from_sqlite_file<P: AsRef<Path>>(filename: P) -> Result<MapData, MapDataError> {
+    pub async fn from_sqlite_file(filename: impl AsRef<Path>) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
                 SqliteConnectOptions::new()
@@ -87,6 +101,13 @@ impl MapData {
         })
     }
 
+    #[cfg(feature = "leveldb")]
+    /// Opens a local LevelDB database
+    pub fn from_leveldb(leveldb_directory: impl AsRef<Path>) -> Result<MapData, MapDataError> {
+        let db = LevelDb::open(leveldb_directory.as_ref()).map_err(MapDataError::LevelDbError)?;
+        Ok(MapData::LevelDb(Arc::new(Mutex::new(db))))
+    }
+
     /// Returns the positions of all mapblocks
     ///
     /// Note that the unit of the coordinates will be
@@ -110,6 +131,21 @@ impl MapData {
                 let mut v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
                 Ok(v.drain(..).map(get_integer_as_block).collect())
             }
+            #[cfg(feature = "leveldb")]
+            MapData::LevelDb(db) => {
+                let mut db = db.lock().await.clone();
+                async_std::task::spawn_blocking(move || {
+                    Ok(db
+                        .iter()?
+                        .alloc()
+                        .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
+                        .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
+                        .map(get_integer_as_block)
+                        .collect())
+                })
+                .await
+                .map_err(MapDataError::LevelDbError)
+            }
         }
     }
 
@@ -127,11 +163,18 @@ impl MapData {
             MapData::Redis { connection, hash } => {
                 Ok(connection.clone().hget(hash.to_string(), pos).await?)
             }
+            #[cfg(feature = "leveldb")]
+            MapData::LevelDb(db) => Ok(db
+                .lock()
+                .await
+                .get(&pos.to_le_bytes())
+                .map_err(MapDataError::LevelDbError)?
+                .ok_or(MapDataError::MapBlockNonexistent(pos))?),
         }
     }
 
     /// Queries the backend for a specific map block
-    /// 
+    ///
     /// `pos` is a map block position.
     pub async fn get_mapblock(&self, pos: Position) -> Result<MapBlock, MapDataError> {
         Ok(MapBlock::from_data(
@@ -140,7 +183,7 @@ impl MapData {
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
-    /// 
+    ///
     /// Returns all nodes along with their relative position within the map block
     pub async fn iter_mapblock_nodes(
         &self,

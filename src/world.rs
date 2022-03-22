@@ -113,6 +113,12 @@ impl World {
                 })?;
                 Ok(MapData::from_redis_connection_params(host, port, hash.clone()).await?)
             }
+            #[cfg(feature = "redis")]
+            "leveldb" => {
+                let World(path) = self;
+                let path = path.clone();
+                Ok(async_std::task::spawn_blocking(move || MapData::from_leveldb(path.join("map.db"))).await?)
+            }
             _ => Err(WorldError::UnknownBackend(backend)),
         }
     }
@@ -132,7 +138,7 @@ pub enum WorldError {
     UnknownBackend(String),
     #[error("Bogus backend config: {0}")]
     /// The map data baackend config contains an error
-    /// 
+    ///
     /// A description is included.
     BogusBackendConfig(String),
     #[error("Host parse error: {0}")]

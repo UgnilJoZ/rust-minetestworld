@@ -3,9 +3,9 @@
 use std::ops::{Add, Rem};
 
 /// Coordinates in the world
-/// 
+///
 /// This type is used for addressing either nodes or map blocks.
-/// 
+///
 /// In the latter case, the components are divided by the
 /// [chunk length](`crate::MAPBLOCK_LENGTH`).
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -68,7 +68,7 @@ pub(crate) fn get_block_as_integer(p: Position) -> i64 {
 }
 
 /// Convert a nodex index (used in flat 16·16·16 arrays) into a node position
-/// 
+///
 /// The node position will be relative to the map block.
 pub(crate) fn mapblock_node_position(node_index: u16) -> Position {
     let x = node_index % 16;
