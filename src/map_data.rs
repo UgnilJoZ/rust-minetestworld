@@ -30,7 +30,7 @@ pub enum MapDataError {
 }
 
 /// A handle to the world data
-/// 
+///
 /// Can be used to query MapBlocks and nodes.
 pub enum MapData {
     #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -131,7 +131,7 @@ impl MapData {
     }
 
     /// Queries the backend for a specific map block
-    /// 
+    ///
     /// `pos` is a map block position.
     pub async fn get_mapblock(&self, pos: Position) -> Result<MapBlock, MapDataError> {
         Ok(MapBlock::from_data(
@@ -140,7 +140,7 @@ impl MapData {
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
-    /// 
+    ///
     /// Returns all nodes along with their relative position within the map block
     pub async fn iter_mapblock_nodes(
         &self,

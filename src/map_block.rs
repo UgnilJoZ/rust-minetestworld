@@ -34,6 +34,9 @@ pub const MAPBLOCK_LENGTH: u8 = 16;
 pub const MAPBLOCK_SIZE: usize =
     MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize;
 
+/// This content type string refers to an unknown content type
+pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
+
 fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
@@ -81,8 +84,11 @@ pub enum MapBlockError {
     MapVersionError(u8),
 }
 
+/// Maps mapblock-local content IDs to content types
+pub type NameIdMappings = HashMap<u16, Vec<u8>>;
+
 /// Metadata of a node
-/// 
+///
 /// e.g. the inventory of a chest or the text of a sign
 pub struct NodeMetadata {
     /// The node index in the flat node array
@@ -92,7 +98,7 @@ pub struct NodeMetadata {
 }
 
 /// Objects in the world that are not nodes
-/// 
+///
 /// For example a LuaEntity
 pub struct StaticObject {
     /// Type ID
@@ -135,7 +141,7 @@ pub struct MapBlock {
     /// Maps each numeric content ID to the content name.
     ///
     /// This is used to efficiently store nodes.
-    pub name_id_mappings: HashMap<u16, Vec<u8>>,
+    pub name_id_mappings: NameIdMappings,
     /// Number bytes used for the content (param0) field of the nodes
     pub content_width: u8,
     /// Additional node params, always 2
@@ -158,51 +164,20 @@ pub struct MapBlock {
 
 impl MapBlock {
     /// Constructs a Mapblock from its binary representation
-    pub fn from_data<R: Read>(mut data: R) -> Result<MapBlock, MapBlockError> {
+    pub fn from_data(mut data: impl Read) -> Result<MapBlock, MapBlockError> {
         let map_format_version = read_u8(&mut data)?;
         if map_format_version != 29 {
             return Err(MapBlockError::MapVersionError(map_format_version));
         }
         // Read all into a vector
         let mut buffer = vec![];
-        let mut zstd = zstd::stream::Decoder::new(data)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
-        zstd.read_to_end(&mut buffer)
-            .map_err(|_| MapBlockError::BlobMalformed("Zstd error".to_string().into()))?;
+        zstd::stream::Decoder::new(data)?.read_to_end(&mut buffer)?;
         let mut data = buffer.as_slice();
 
         let flags = read_u8(&mut data)?;
-
         let lighting_complete = read_u16_be(&mut data)?;
-
         let timestamp = read_u32_be(&mut data)?;
-
-        if read_u8(&mut data)? != 0 {
-            return Err(MapBlockError::BlobMalformed(
-                "name_id_mappings version byte is not zero"
-                    .to_owned()
-                    .into(),
-            ));
-        }
-
-        let num_name_id_mappings = read_u16_be(&mut data)?;
-        let mut name_id_mappings = HashMap::new();
-        for _ in 0..num_name_id_mappings {
-            let id = read_u16_be(&mut data)?;
-            let mut name = vec![0; read_u16_be(&mut data)? as usize];
-            data.read_exact(&mut name)?;
-
-            if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
-                return Err(MapBlockError::BlobMalformed(
-                    format!(
-                        "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
-                        std::string::String::from_utf8_lossy(&old_name),
-                        std::string::String::from_utf8_lossy(&name)
-                    )
-                    .into(),
-                ));
-            }
-        }
+        let name_id_mappings = read_name_id_mappings(&mut data)?;
 
         let content_width = read_u8(&mut data)?;
         if content_width != 2 {
@@ -251,7 +226,7 @@ impl MapBlock {
         self.name_id_mappings
             .get(&content_id)
             .map(|v| v.as_slice())
-            .unwrap_or(b"unkown")
+            .unwrap_or(CONTENT_UNKNOWN)
     }
 
     /// Queries the mapblock for a node on the given relative coordinates
@@ -264,6 +239,36 @@ impl MapBlock {
             param2: self.param2[index],
         }
     }
+}
+
+// Helper functions to read smaller chunks of data
+
+fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBlockError> {
+    if read_u8(data)? != 0 {
+        return Err(MapBlockError::BlobMalformed(
+            "name_id_mappings version byte is not zero".into(),
+        ));
+    }
+
+    let num_name_id_mappings = read_u16_be(data)?;
+    let mut name_id_mappings = HashMap::new();
+    for _ in 0..num_name_id_mappings {
+        let id = read_u16_be(data)?;
+        let mut name = vec![0; read_u16_be(data)? as usize];
+        data.read_exact(&mut name)?;
+
+        if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
+            return Err(MapBlockError::BlobMalformed(
+                format!(
+                    "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
+                    std::string::String::from_utf8_lossy(&old_name),
+                    std::string::String::from_utf8_lossy(&name)
+                )
+                .into(),
+            ));
+        }
+    }
+    Ok(name_id_mappings)
 }
 
 /// Iterates through the nodes in a mapblock.

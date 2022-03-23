@@ -131,8 +131,8 @@ pub enum WorldError {
     /// The map data backend is not known or implemented
     UnknownBackend(String),
     #[error("Bogus backend config: {0}")]
-    /// The map data baackend config contains an error
-    /// 
+    /// The map data backend config contains an error
+    ///
     /// A description is included.
     BogusBackendConfig(String),
     #[error("Host parse error: {0}")]
