@@ -28,7 +28,7 @@ fn main() {
     };
     task::block_on(async {
         let world = World::new("TestWorld");
-        let mapdata = world.get_map().await.unwrap();
+        let mapdata = world.get_map_data().await.unwrap();
         for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
             println!("{pos:?}, {node:?}");
         }

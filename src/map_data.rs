@@ -1,8 +1,13 @@
 //! Contains a type to read a world's map data
 use futures::stream::TryStreamExt;
+#[cfg(feature = "experimental-leveldb")]
+use leveldb_rs::{LevelDBError, DB as LevelDb};
+#[cfg(feature = "experimental-leveldb")]
+use async_std::sync::{Arc, Mutex};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 use sqlx::prelude::*;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use std::path::Path;
 use url::Host;
@@ -24,9 +29,16 @@ pub enum MapDataError {
     #[error("Database error: {0}")]
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
+    #[cfg(feature = "experimental-leveldb")]
+    #[error("LevelDB error: {0}")]
+    /// LevelDB error
+    LevelDbError(LevelDBError),
     #[error("MapBlockError: {0}")]
     /// Error while reading a map block
     MapBlockError(#[from] MapBlockError),
+    /// This mapblock does not exist
+    #[error("MapBlock {0} does not exist")]
+    MapBlockNonexistent(i64),
 }
 
 /// A handle to the world data
@@ -44,6 +56,9 @@ pub enum MapData {
         /// The hash in which the world's data is stored in
         hash: String,
     },
+    #[cfg(feature = "experimental-leveldb")]
+    /// This variant is a thread-safe open LevelDB
+    LevelDb(Arc<Mutex<LevelDb>>),
 }
 
 impl MapData {
@@ -58,7 +73,7 @@ impl MapData {
     ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
     /// });
     /// ```
-    pub async fn from_sqlite_file<P: AsRef<Path>>(filename: P) -> Result<MapData, MapDataError> {
+    pub async fn from_sqlite_file(filename: impl AsRef<Path>) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
                 SqliteConnectOptions::new()
@@ -74,7 +89,7 @@ impl MapData {
     pub async fn from_redis_connection_params(
         host: Host,
         port: Option<u16>,
-        hash: String,
+        hash: &str,
     ) -> Result<MapData, MapDataError> {
         Ok(MapData::Redis {
             connection: redis::Client::open(format!(
@@ -83,8 +98,15 @@ impl MapData {
             ))?
             .get_multiplexed_async_std_connection()
             .await?,
-            hash,
+            hash: String::from(hash),
         })
+    }
+
+    #[cfg(feature = "experimental-leveldb")]
+    /// Opens a local LevelDB database
+    pub fn from_leveldb(leveldb_directory: impl AsRef<Path>) -> Result<MapData, MapDataError> {
+        let db = LevelDb::open(leveldb_directory.as_ref()).map_err(MapDataError::LevelDbError)?;
+        Ok(MapData::LevelDb(Arc::new(Mutex::new(db))))
     }
 
     /// Returns the positions of all mapblocks
@@ -107,8 +129,27 @@ impl MapData {
             }
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                let mut v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.drain(..).map(get_integer_as_block).collect())
+                let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
+                Ok(v.into_iter().map(get_integer_as_block).collect())
+            }
+            #[cfg(feature = "experimental-leveldb")]
+            MapData::LevelDb(db) =>
+            // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
+            {
+                Ok(db
+                    .lock()
+                    .await
+                    .iter()
+                    .map_err(MapDataError::LevelDbError)?
+                    .alloc()
+                    //.inspect(|(key, _value)| println!("{key:?}"))
+                    // Now here it gets interesting. Figure out why the key's length is often 9 bytes instead of 8 bytes.
+                    .filter(|(key, _)| key.len() == 8)
+                    // And figure out why LevelDB reports corrupted blocks
+                    .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
+                    .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
+                    .map(get_integer_as_block)
+                    .collect())
             }
         }
     }
@@ -127,6 +168,13 @@ impl MapData {
             MapData::Redis { connection, hash } => {
                 Ok(connection.clone().hget(hash.to_string(), pos).await?)
             }
+            #[cfg(feature = "experimental-leveldb")]
+            MapData::LevelDb(db) => Ok(db
+                .lock()
+                .await
+                .get(&pos.to_le_bytes())
+                .map_err(MapDataError::LevelDbError)?
+                .ok_or(MapDataError::MapBlockNonexistent(pos))?),
         }
     }
 

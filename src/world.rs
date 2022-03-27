@@ -24,7 +24,7 @@ impl World {
     /// Creates a new world object from a directory path.
     ///
     /// No further checks are done, e.g. for existence of essential files.
-    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+    pub fn new(path: impl AsRef<Path>) -> Self {
         World(path.as_ref().to_path_buf())
     }
 
@@ -85,10 +85,10 @@ impl World {
     /// use async_std::task;
     ///
     /// let map_data = task::block_on(async {
-    ///     World::new("TestWorld").get_map().await.unwrap()
+    ///     World::new("TestWorld").get_map_data().await.unwrap()
     /// });
     /// ```
-    pub async fn get_map(&self) -> Result<MapData, WorldError> {
+    pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
         let backend = self.get_backend().await?;
         match backend.as_ref() {
             #[cfg(feature = "sqlite")]
@@ -111,7 +111,16 @@ impl World {
                         "The backend 'redis' requires a 'redis_hash' in world.mt",
                     ))
                 })?;
-                Ok(MapData::from_redis_connection_params(host, port, hash.clone()).await?)
+                Ok(MapData::from_redis_connection_params(host, port, hash).await?)
+            }
+            #[cfg(feature = "experimental-leveldb")]
+            "leveldb" => {
+                let World(path) = self;
+                let path = path.clone();
+                Ok(async_std::task::spawn_blocking(move || {
+                    MapData::from_leveldb(path.join("map.db"))
+                })
+                .await?)
             }
             _ => Err(WorldError::UnknownBackend(backend)),
         }

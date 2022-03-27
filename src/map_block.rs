@@ -37,7 +37,7 @@ pub const MAPBLOCK_SIZE: usize =
 /// This content type string refers to an unknown content type
 pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
 
-fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
+fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
     Ok(buf[0])
