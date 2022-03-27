@@ -34,7 +34,7 @@ pub const MAPBLOCK_LENGTH: u8 = 16;
 pub const MAPBLOCK_SIZE: usize =
     MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize * MAPBLOCK_LENGTH as usize;
 
-fn read_u8(r: &mut impl Read) -> Result<u8, std::io::Error> {
+fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
     Ok(buf[0])

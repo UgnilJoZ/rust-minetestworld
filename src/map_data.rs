@@ -29,7 +29,7 @@ pub enum MapDataError {
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
     #[cfg(feature = "leveldb")]
-    #[error("Database error: {0}")]
+    #[error("LevelDB error: {0}")]
     /// LevelDB error
     LevelDbError(LevelDBError),
     #[error("MapBlockError: {0}")]
@@ -88,7 +88,7 @@ impl MapData {
     pub async fn from_redis_connection_params(
         host: Host,
         port: Option<u16>,
-        hash: String,
+        hash: &str,
     ) -> Result<MapData, MapDataError> {
         Ok(MapData::Redis {
             connection: redis::Client::open(format!(
@@ -97,7 +97,7 @@ impl MapData {
             ))?
             .get_multiplexed_async_std_connection()
             .await?,
-            hash,
+            hash: String::from(hash),
         })
     }
 
@@ -128,23 +128,27 @@ impl MapData {
             }
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                let mut v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.drain(..).map(get_integer_as_block).collect())
+                let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
+                Ok(v.into_iter().map(get_integer_as_block).collect())
             }
             #[cfg(feature = "leveldb")]
-            MapData::LevelDb(db) => {
-                let mut db = db.lock().await.clone();
-                async_std::task::spawn_blocking(move || {
-                    Ok(db
-                        .iter()?
-                        .alloc()
-                        .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
-                        .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
-                        .map(get_integer_as_block)
-                        .collect())
-                })
-                .await
-                .map_err(MapDataError::LevelDbError)
+            MapData::LevelDb(db) =>
+            // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
+            {
+                Ok(db
+                    .lock()
+                    .await
+                    .iter()
+                    .map_err(MapDataError::LevelDbError)?
+                    .alloc()
+                    //.inspect(|(key, _value)| println!("{key:?}"))
+                    // Now here it gets interesting. Figure out why the key's length is often 9 bytes instead of 8 bytes.
+                    .filter(|(key, _)| key.len() == 8)
+                    // And figure out why LevelDB reports corrupted blocks
+                    .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
+                    .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
+                    .map(get_integer_as_block)
+                    .collect())
             }
         }
     }

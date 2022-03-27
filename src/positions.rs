@@ -10,7 +10,7 @@ use std::ops::{Add, Rem};
 /// [chunk length](`crate::MAPBLOCK_LENGTH`).
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Position {
-    /// "West direction". The direction in which the sun goes down.
+    /// "East direction". The direction in which the sun rises.
     pub x: i16,
     /// "Up" direction
     pub y: i16,

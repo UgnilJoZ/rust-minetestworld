@@ -10,9 +10,11 @@
 //!
 //! This term might originate in the Irrlicht engine.
 //!
-//! ## MapBlock
-//! The world is divided into chunks that are called [map blocks](`MapBlock`).
+//! ### MapBlock
+//! The world data is divided into chunks that are called [map blocks](`MapBlock`).
 //! A map block contains 16·16·16 nodes as well as objects and metadata.
+//!
+//! It is addressed by a [`Position`] that is divided by [`MAPBLOCK_LENGTH`] in each component.
 //!
 //! ## Example usage
 //!
@@ -29,7 +31,7 @@
 //!
 //! task::block_on(async {
 //!     let world = World::new("TestWorld");
-//!     let mapdata = world.get_map().await.unwrap();
+//!     let mapdata = world.get_map_data().await.unwrap();
 //!     for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
 //!         println!("{pos:?}, {node:?}");
 //!     }
