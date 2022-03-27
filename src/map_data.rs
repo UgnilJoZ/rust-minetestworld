@@ -1,8 +1,9 @@
 //! Contains a type to read a world's map data
-use async_std::sync::{Arc, Mutex};
 use futures::stream::TryStreamExt;
-#[cfg(feature = "leveldb")]
+#[cfg(feature = "experimental-leveldb")]
 use leveldb_rs::{LevelDBError, DB as LevelDb};
+#[cfg(feature = "experimental-leveldb")]
+use async_std::sync::{Arc, Mutex};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 use sqlx::prelude::*;
@@ -28,7 +29,7 @@ pub enum MapDataError {
     #[error("Database error: {0}")]
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
-    #[cfg(feature = "leveldb")]
+    #[cfg(feature = "experimental-leveldb")]
     #[error("LevelDB error: {0}")]
     /// LevelDB error
     LevelDbError(LevelDBError),
@@ -55,7 +56,7 @@ pub enum MapData {
         /// The hash in which the world's data is stored in
         hash: String,
     },
-    #[cfg(feature = "leveldb")]
+    #[cfg(feature = "experimental-leveldb")]
     /// This variant is a thread-safe open LevelDB
     LevelDb(Arc<Mutex<LevelDb>>),
 }
@@ -101,7 +102,7 @@ impl MapData {
         })
     }
 
-    #[cfg(feature = "leveldb")]
+    #[cfg(feature = "experimental-leveldb")]
     /// Opens a local LevelDB database
     pub fn from_leveldb(leveldb_directory: impl AsRef<Path>) -> Result<MapData, MapDataError> {
         let db = LevelDb::open(leveldb_directory.as_ref()).map_err(MapDataError::LevelDbError)?;
@@ -131,7 +132,7 @@ impl MapData {
                 let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
                 Ok(v.into_iter().map(get_integer_as_block).collect())
             }
-            #[cfg(feature = "leveldb")]
+            #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) =>
             // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
             {
@@ -167,7 +168,7 @@ impl MapData {
             MapData::Redis { connection, hash } => {
                 Ok(connection.clone().hget(hash.to_string(), pos).await?)
             }
-            #[cfg(feature = "leveldb")]
+            #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) => Ok(db
                 .lock()
                 .await

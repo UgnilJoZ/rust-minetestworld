@@ -113,7 +113,7 @@ impl World {
                 })?;
                 Ok(MapData::from_redis_connection_params(host, port, hash).await?)
             }
-            #[cfg(feature = "redis")]
+            #[cfg(feature = "experimental-leveldb")]
             "leveldb" => {
                 let World(path) = self;
                 let path = path.clone();
