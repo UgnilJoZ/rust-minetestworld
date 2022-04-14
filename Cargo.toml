@@ -13,7 +13,7 @@ thiserror = "1.0"
 sqlx = { version = "0.5", features = [ "runtime-async-std-native-tls" ], optional = true }
 redis = { version = "0.21.0", default-features = false, features = [ "async-std-comp" ], optional = true }
 leveldb-rs = { version = "0.0.7", optional = true }
-url = "2.2"
+url = { version = "2.2", optional = true }
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
 zstd = "0.11"
@@ -24,6 +24,7 @@ smartstring = {version = "1", optional = true}
 
 [features]
 default = ["redis", "sqlite", "postgres"]
+redis = ["dep:redis", "url"]
 sqlite = ["sqlx/sqlite"]
 postgres = ["sqlx/postgres", "http"]
 experimental-leveldb = ["leveldb-rs"]

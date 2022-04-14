@@ -157,6 +157,7 @@ pub enum WorldError {
     /// A description is included.
     BogusBackendConfig(String),
     #[error("Host parse error: {0}")]
+    #[cfg(feature = "redis")]
     /// Failure to parse an URL
     ParseUrlError(#[from] url::ParseError),
     #[error("Parse int error: {0}")]
