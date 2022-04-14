@@ -36,4 +36,13 @@ fn main() {
 }
 ```
 
-See <https://github.com/UgnilJoZ/minetest-worldmapper> for a real-world example.
+## Selectable backends
+The Cargo features `sqlite`, `redis`, and `postgres` enable the respective map data backend. They are enabled by default and can be selected individually:
+```toml
+[dependencies]
+minetestworld = { version = "0.4", default-features = false, features = [ "sqlite" ] }
+```
+
+This crate only compiles if at least one backend is enabled, because it becomes pointless without.
+
+See [minetest-worldmapper](https://github.com/UgnilJoZ/minetest-worldmapper) for a real-world example.
