@@ -1,19 +1,24 @@
 //! Contains a type to read a world's map data
+#[cfg(feature = "experimental-leveldb")]
+use async_std::sync::{Arc, Mutex};
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use futures::stream::TryStreamExt;
 #[cfg(feature = "experimental-leveldb")]
 use leveldb_rs::{LevelDBError, DB as LevelDb};
-#[cfg(feature = "experimental-leveldb")]
-use async_std::sync::{Arc, Mutex};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
-use sqlx::prelude::*;
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use std::path::Path;
-use url::Host;
-
 #[cfg(feature = "smartstring")]
 use smartstring::alias::String;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+use sqlx::prelude::*;
+#[cfg(feature = "sqlite")]
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+#[cfg(feature = "postgres")]
+use sqlx::PgPool;
+#[cfg(any(feature = "sqlite", feature = "experimental-leveldb"))]
+use std::path::Path;
+#[cfg(feature = "redis")]
+use url::Host;
 
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
@@ -25,17 +30,21 @@ pub enum MapDataError {
     #[error("Database error: {0}")]
     /// sqlx based error. This covers Sqlite and Postgres errors.
     SqlError(#[from] sqlx::Error),
+
     #[cfg(feature = "redis")]
     #[error("Database error: {0}")]
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
+
     #[cfg(feature = "experimental-leveldb")]
     #[error("LevelDB error: {0}")]
     /// LevelDB error
     LevelDbError(LevelDBError),
+
     #[error("MapBlockError: {0}")]
     /// Error while reading a map block
     MapBlockError(#[from] MapBlockError),
+
     /// This mapblock does not exist
     #[error("MapBlock {0} does not exist")]
     MapBlockNonexistent(i64),
@@ -45,19 +54,25 @@ pub enum MapDataError {
 ///
 /// Can be used to query MapBlocks and nodes.
 pub enum MapData {
-    #[cfg(any(feature = "sqlite", feature = "postgres"))]
-    /// This variant covers the SQLite and PostgreSQL database backends
+    /// This variant covers the SQLite database backend
+    #[cfg(feature = "sqlite")]
     Sqlite(SqlitePool),
-    #[cfg(feature = "redis")]
+
+    /// This variant supports PostgreSQL as a backend
+    #[cfg(feature = "postgres")]
+    Postgres(PgPool),
+
     /// This variant supports Redis as database backend
+    #[cfg(feature = "redis")]
     Redis {
         /// The connection to the Redis instance
         connection: RedisConn,
         /// The hash in which the world's data is stored in
         hash: String,
     },
-    #[cfg(feature = "experimental-leveldb")]
+
     /// This variant is a thread-safe open LevelDB
+    #[cfg(feature = "experimental-leveldb")]
     LevelDb(Arc<Mutex<LevelDb>>),
 }
 
@@ -82,6 +97,12 @@ impl MapData {
             )
             .await?,
         ))
+    }
+
+    #[cfg(feature = "postgres")]
+    /// Connects to a Postgres database
+    pub async fn from_pg_connection_params(url: &str) -> Result<MapData, MapDataError> {
+        Ok(MapData::Postgres(PgPool::connect(url).await?))
     }
 
     #[cfg(feature = "redis")]
@@ -127,6 +148,27 @@ impl MapData {
                 }
                 Ok(result)
             }
+            #[cfg(feature = "postgres")]
+            MapData::Postgres(pool) => {
+                let mut result = vec![];
+                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks")
+                    .bind("x")
+                    .bind("y")
+                    .bind("z")
+                    .fetch(pool);
+                while let Some(row) = rows.try_next().await? {
+                    let x: i32 = row.try_get("posx")?;
+                    let y: i32 = row.try_get("posy")?;
+                    let z: i32 = row.try_get("posz")?;
+                    let pos = Position {
+                        x: x as i16,
+                        y: y as i16,
+                        z: z as i16,
+                    };
+                    result.push(pos);
+                }
+                Ok(result)
+            }
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
@@ -156,23 +198,33 @@ impl MapData {
 
     /// Queries the backend for the data of a single mapblock
     pub async fn get_block_data(&self, pos: Position) -> Result<Vec<u8>, MapDataError> {
-        let pos = get_block_as_integer(pos);
+        let pos_index = get_block_as_integer(pos);
         match self {
             #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => Ok(sqlx::query("SELECT data FROM blocks WHERE pos = ?")
-                .bind(pos)
+                .bind(pos_index)
                 .fetch_one(pool)
                 .await?
                 .try_get("data")?),
+            #[cfg(feature = "postgres")]
+            MapData::Postgres(pool) => Ok(sqlx::query(
+                "SELECT data FROM blocks WHERE (posx = $1 AND posy = $2 AND posz = $3)",
+            )
+            .bind(pos.x)
+            .bind(pos.y)
+            .bind(pos.z)
+            .fetch_one(pool)
+            .await?
+            .try_get("data")?),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                Ok(connection.clone().hget(hash.to_string(), pos).await?)
+                Ok(connection.clone().hget(hash.to_string(), pos_index).await?)
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) => Ok(db
                 .lock()
                 .await
-                .get(&pos.to_le_bytes())
+                .get(&pos_index.to_le_bytes())
                 .map_err(MapDataError::LevelDbError)?
                 .ok_or(MapDataError::MapBlockNonexistent(pos))?),
         }

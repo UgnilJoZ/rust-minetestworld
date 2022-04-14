@@ -17,12 +17,13 @@ url = "2.2"
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
 zstd = "0.11"
+http = { version = "0.2.6", optional = true }
 
 [target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
 smartstring = {version = "1", optional = true}
 
 [features]
-default = ["redis", "sqlite"]
+default = ["redis", "sqlite", "postgres"]
 sqlite = ["sqlx/sqlite"]
-postgres = ["sqlx/postgres"]
+postgres = ["sqlx/postgres", "http"]
 experimental-leveldb = ["leveldb-rs"]

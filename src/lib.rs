@@ -3,7 +3,7 @@
 //!
 //! ## Terminology
 //! ### Node
-//! [Nodes](`Node`) are single voxels that the world data consist of. It has three properties:
+//! [Nodes](`Node`) are the single voxels that the world data consist of. It has three properties:
 //! 1. A content type string (like `air` or `default:dirt`)
 //! 2. Flags to determine lighting rendering
 //! 3. Additional data that can be interpreted based on the content type (e.g. flow information for liquids)

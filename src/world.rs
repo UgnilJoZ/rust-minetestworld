@@ -90,11 +90,23 @@ impl World {
     /// ```
     pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
         let backend = self.get_backend().await?;
-        match backend.as_ref() {
+        match backend.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite3" => {
                 let World(path) = self;
                 Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
+            }
+            #[cfg(feature = "postgres")]
+            "postgresql" => {
+                let meta = self.get_world_metadata().await?;
+                let connstr = meta.get("pgsql_connection").ok_or_else(|| {
+                    WorldError::BogusBackendConfig(String::from(
+                        "The backend 'postgres' requires a 'pgsql_connection' in world.mt",
+                    ))
+                })?;
+                let uri = &keyvalue_to_uri_connectionstr(connstr)
+                    .map_err(WorldError::BogusBackendConfig)?;
+                Ok(MapData::from_pg_connection_params(uri).await?)
             }
             #[cfg(feature = "redis")]
             "redis" => {
@@ -117,10 +129,10 @@ impl World {
             "leveldb" => {
                 let World(path) = self;
                 let path = path.clone();
-                Ok(async_std::task::spawn_blocking(move || {
-                    MapData::from_leveldb(path.join("map.db"))
-                })
-                .await?)
+                Ok(
+                    task::spawn_blocking(move || MapData::from_leveldb(path.join("map.db")))
+                        .await?,
+                )
             }
             _ => Err(WorldError::UnknownBackend(backend)),
         }
@@ -150,4 +162,41 @@ pub enum WorldError {
     #[error("Parse int error: {0}")]
     /// Failure to parse an int from a string
     ParseIntError(#[from] std::num::ParseIntError),
+}
+
+/// Converts a postgres connection string from keyvalue to URI
+#[cfg(feature = "postgres")]
+fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<String, String> {
+    let mut params: HashMap<&str, &str> = keyword_value
+        .split_whitespace()
+        .filter_map(|s| s.split_once('='))
+        .collect();
+
+    let host = params.remove("host").unwrap_or("localhost");
+    let mut url: String = if let Some(port) = params.remove("port") {
+        format!("{host}:{port}").into()
+    } else {
+        host.to_string().into()
+    };
+
+    let user = params.remove("user");
+    let password = params.remove("password");
+    if let (Some(user), Some(password)) = (user, password) {
+        url = format!("{user}:{password}@{url}").into();
+    }
+    url = format!("postgresql://{url}").into();
+    if let Some(dbname) = params.remove("dbname") {
+        url = format!("{url}/{dbname}").into();
+        if !params.is_empty() {
+            url.push_str(
+                &params
+                    .iter()
+                    .map(|(key, value)| format!("{key}{value}"))
+                    .fold(String::new(), |a, b| a + "&" + &b),
+            );
+        }
+        Ok(url)
+    } else {
+        Err(String::from("No dbname in keyvalue connection string"))
+    }
 }
