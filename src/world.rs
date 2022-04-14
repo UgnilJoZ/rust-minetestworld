@@ -58,7 +58,7 @@ impl World {
         Ok(result)
     }
 
-    async fn get_backend(&self) -> Result<String, WorldError> {
+    async fn get_backend_name(&self) -> Result<String, WorldError> {
         match self.get_world_metadata().await {
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
@@ -89,7 +89,7 @@ impl World {
     /// });
     /// ```
     pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
-        let backend = self.get_backend().await?;
+        let backend = self.get_backend_name().await?;
         match backend.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite3" => {
