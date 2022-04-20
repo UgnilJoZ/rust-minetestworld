@@ -21,7 +21,7 @@ use std::path::Path;
 use url::Host;
 
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
-use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
+use crate::positions::Position;
 
 /// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
@@ -139,11 +139,10 @@ impl MapData {
             #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => {
                 let mut result = vec![];
-                let mut rows = sqlx::query("SELECT pos FROM blocks")
-                    .fetch(pool);
+                let mut rows = sqlx::query("SELECT pos FROM blocks").fetch(pool);
                 while let Some(row) = rows.try_next().await? {
                     let pos_index = row.try_get("pos")?;
-                    result.push(get_integer_as_block(pos_index));
+                    result.push(Position::from_database_key(pos_index));
                 }
                 Ok(result)
             }
@@ -167,7 +166,7 @@ impl MapData {
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.into_iter().map(get_integer_as_block).collect())
+                Ok(v.into_iter().map(Position::from_database_key).collect())
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) =>
@@ -193,7 +192,7 @@ impl MapData {
 
     /// Queries the backend for the data of a single mapblock
     pub async fn get_block_data(&self, pos: Position) -> Result<Vec<u8>, MapDataError> {
-        let pos_index = get_block_as_integer(pos);
+        let pos_index = pos.as_database_key();
         match self {
             #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => Ok(sqlx::query("SELECT data FROM blocks WHERE pos = ?")

@@ -1,4 +1,4 @@
-use crate::positions::{get_integer_as_block, mapblock_node_position, Position};
+use crate::positions::Position;
 use crate::MapBlock;
 use crate::MapData;
 use crate::World;
@@ -30,11 +30,11 @@ async fn can_query() {
 #[test]
 fn simple_math() {
     assert_eq!(
-        get_integer_as_block(134270984),
+        Position::from_database_key(134270984),
         Position { x: 8, y: 13, z: 8 }
     );
     assert_eq!(
-        get_integer_as_block(-184549374),
+        Position::from_database_key(-184549374),
         Position { x: 2, y: 0, z: -11 }
     );
 }
@@ -81,7 +81,6 @@ async fn count_nodes() {
 
 #[async_std::test]
 async fn iter_node_positions() {
-
     let blockpos = Position {
         x: -13,
         y: -8,
@@ -97,9 +96,9 @@ async fn iter_node_positions() {
 
 #[test]
 fn node_index() {
-    assert_eq!(mapblock_node_position(0), Position { x: 0, y: 0, z: 0 });
+    assert_eq!(Position::from_node_index(0), Position { x: 0, y: 0, z: 0 });
     assert_eq!(
-        mapblock_node_position(4095),
+        Position::from_node_index(4095),
         Position {
             x: 15,
             y: 15,

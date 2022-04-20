@@ -1,6 +1,6 @@
 //! Contains data types and constants to work with MapBlocks
 
-use crate::positions::{mapblock_node_index, mapblock_node_position, Position};
+use crate::positions::Position;
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -233,8 +233,8 @@ impl MapBlock {
 
     /// Queries the mapblock for a node on the given relative coordinates
     pub fn get_node_at(&self, x: u8, y: u8, z: u8) -> Node {
-        let index = mapblock_node_index(x, y, z) as usize;
-        let param0 = self.content_from_id(self.param0[index as usize]);
+        let index = Position::new(x, y, z).as_node_index() as usize;
+        let param0 = self.content_from_id(self.param0[index]);
         Node {
             param0: std::string::String::from_utf8_lossy(param0).into(),
             param1: self.param1[index],
@@ -303,7 +303,8 @@ impl Iterator for NodeIter {
         let index = self.node_index;
         if index < 4096 {
             self.node_index += 1;
-            let pos = self.mapblock_position * MAPBLOCK_LENGTH as i16 + mapblock_node_position(index);
+            let pos =
+                self.mapblock_position * MAPBLOCK_LENGTH as i16 + Position::from_node_index(index);
             let param0 = self
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);
