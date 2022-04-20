@@ -140,7 +140,6 @@ impl MapData {
             MapData::Sqlite(pool) => {
                 let mut result = vec![];
                 let mut rows = sqlx::query("SELECT pos FROM blocks")
-                    .bind("pos")
                     .fetch(pool);
                 while let Some(row) = rows.try_next().await? {
                     let pos_index = row.try_get("pos")?;
@@ -151,11 +150,7 @@ impl MapData {
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => {
                 let mut result = vec![];
-                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks")
-                    .bind("x")
-                    .bind("y")
-                    .bind("z")
-                    .fetch(pool);
+                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks").fetch(pool);
                 while let Some(row) = rows.try_next().await? {
                     let x: i32 = row.try_get("posx")?;
                     let y: i32 = row.try_get("posy")?;

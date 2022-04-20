@@ -1,6 +1,7 @@
 use crate::positions::{get_integer_as_block, mapblock_node_position, Position};
 use crate::MapBlock;
 use crate::MapData;
+use crate::World;
 
 #[async_std::test]
 async fn db_exists() {
@@ -76,6 +77,22 @@ async fn count_nodes() {
         .unwrap()
         .count();
     assert_eq!(count, 4096);
+}
+
+#[async_std::test]
+async fn iter_node_positions() {
+
+    let blockpos = Position {
+        x: -13,
+        y: -8,
+        z: 2,
+    };
+
+    let world = World::new("TestWorld");
+    let mapdata = world.get_map_data().await.unwrap();
+    for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
+        println!("{pos:?}, {node:?}");
+    }
 }
 
 #[test]

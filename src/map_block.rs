@@ -66,7 +66,7 @@ pub struct Node {
     pub param2: u8,
 }
 
-/// An error during the decoding of a MapBlock
+/// An error during the [decoding](`MapBlock::from_data`) of a MapBlock
 #[derive(thiserror::Error, Debug)]
 pub enum MapBlockError {
     /// The mapblock did not follow the expected binary structure.
@@ -74,9 +74,11 @@ pub enum MapBlockError {
     /// This variant contains a more detailed error message.
     #[error("MapBlock malformed: {0}")]
     BlobMalformed(String),
+
     #[error("Read error: {0}")]
     /// The underlying reader returned an error, which is contained.
     ReadError(#[from] std::io::Error),
+
     /// The mapblock does not have a current enough version.
     ///
     /// The 'wrong' version is contained.
@@ -115,7 +117,7 @@ pub struct StaticObject {
 
 /// Represents a running node timer
 pub struct NodeTimer {
-    ///The node index in the flat node array
+    /// The node index in the flat node array
     pub timer_position: u16,
     /// Timeout in milliseconds
     pub timeout: i32,
@@ -154,7 +156,7 @@ pub struct MapBlock {
     pub param1: [u8; 4096],
     /// The param2 field of every node
     pub param2: [u8; 4096],
-    /// Nodfe metadata
+    /// Node metadata
     pub node_metadata: Vec<NodeMetadata>,
     /// Static object version
     pub static_object_version: u8,
@@ -273,7 +275,7 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
 
 /// Iterates through the nodes in a mapblock.
 ///
-/// This yields a tuple in the form ([relative_position][`Position`],
+/// This yields tuples in the form ([relative_position][`Position`],
 /// [node][`Node`]).
 pub struct NodeIter {
     mapblock: MapBlock,
@@ -294,14 +296,14 @@ impl NodeIter {
 impl Iterator for NodeIter {
     /// The type this iterator yields.
     ///
-    /// This is a tuple consisting if the node and its relative position in the chunk.
+    /// This is a tuple consisting of the node and its position in the world.
     type Item = (Position, Node);
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.node_index;
         if index < 4096 {
             self.node_index += 1;
-            let pos = self.mapblock_position + mapblock_node_position(index);
+            let pos = self.mapblock_position * MAPBLOCK_LENGTH as i16 + mapblock_node_position(index);
             let param0 = self
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);

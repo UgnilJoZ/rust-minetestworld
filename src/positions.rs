@@ -36,6 +36,18 @@ impl std::ops::Add for Position {
     }
 }
 
+impl std::ops::Mul<i16> for Position {
+    type Output = Self;
+
+    fn mul(self, rhs: i16) -> Self {
+        Position {
+            x: self.x * rhs,
+            y: self.y * rhs,
+            z: self.z * rhs,
+        }
+    }
+}
+
 /// While there is no modulo operator in rust, we'll use the remainder operator (%) to build one.
 pub fn modulo<I>(a: I, b: I) -> I
 where
