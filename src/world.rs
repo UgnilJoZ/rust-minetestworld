@@ -8,6 +8,9 @@ use async_std::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "url")]
+use url::Url;
+
 #[cfg(feature = "smartstring")]
 use smartstring::alias::String;
 
@@ -173,31 +176,23 @@ fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<String, String> 
         .filter_map(|s| s.split_once('='))
         .collect();
 
+    let mut url = Url::parse("postgresql://").unwrap();
     let host = params.remove("host").unwrap_or("localhost");
-    let mut url: String = if let Some(port) = params.remove("port") {
-        format!("{host}:{port}").into()
-    } else {
-        host.to_string().into()
-    };
+    url.set_host(Some(host)).map_err(|e| format!("{e}"))?;
+    let port = params.remove("host").map(|s| u16::from_str_radix(s, 10)).ok_or_else(|| String::from("port is not a valid number"))?.unwrap_or(5432);
+    url.set_port(Some(port)).map_err(|_| String::new())?;
 
-    let user = params.remove("user");
-    let password = params.remove("password");
-    if let (Some(user), Some(password)) = (user, password) {
-        url = format!("{user}:{password}@{url}").into();
+    if let Some(user) = params.remove("user") {
+        url.set_username(user).map_err(|_| String::new())?;
     }
-    url = format!("postgresql://{url}").into();
-    if let Some(dbname) = params.remove("dbname") {
-        url = format!("{url}/{dbname}").into();
-        if !params.is_empty() {
-            url.push_str(
-                &params
-                    .iter()
-                    .map(|(key, value)| format!("{key}{value}"))
-                    .fold(String::new(), |a, b| a + "&" + &b),
-            );
-        }
-        Ok(url)
-    } else {
-        Err(String::from("No dbname in keyvalue connection string"))
+    url.set_password(params.remove("password")).map_err(|_| String::new())?;
+
+    url.set_path(params.remove("dbname").unwrap_or_default());
+
+    for (key, value) in params {
+        url.query_pairs_mut().append_pair(key, value);
     }
+
+    Ok(url.into())
 }
+

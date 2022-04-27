@@ -26,5 +26,5 @@ smartstring = {version = "1", optional = true}
 default = ["redis", "sqlite", "postgres"]
 redis = ["dep:redis", "url"]
 sqlite = ["sqlx/sqlite"]
-postgres = ["sqlx/postgres"]
+postgres = ["sqlx/postgres", "url"]
 experimental-leveldb = ["leveldb-rs"]
