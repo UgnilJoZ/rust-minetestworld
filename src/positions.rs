@@ -1,6 +1,8 @@
 //! Contains functions and datatypes to work with world coordinates
 
 use std::ops::{Add, Rem};
+use num_integer::div_floor;
+use crate::MAPBLOCK_LENGTH;
 
 /// Coordinates in the world
 ///
@@ -102,5 +104,14 @@ impl Position {
     /// Convert a MapBlock-relative node position into a flat array index
     pub(crate) fn as_node_index(&self) -> u16 {
         self.x as u16 + 16 * self.y as u16 + 256 * self.z as u16
+    }
+
+    /// Return the mapblock position corresponding to this node position
+    pub(crate) fn mapblock_at(&self) -> Position {
+        Position {
+            x: div_floor(self.x, MAPBLOCK_LENGTH.into()),
+            y: div_floor(self.y, MAPBLOCK_LENGTH.into()),
+            z: div_floor(self.z, MAPBLOCK_LENGTH.into()),
+        }
     }
 }
