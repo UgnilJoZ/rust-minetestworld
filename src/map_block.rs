@@ -223,6 +223,25 @@ impl MapBlock {
         Ok(mapblock)
     }
 
+    /// Creates an unloaded map block that only contains CONTENT_IGNORE
+    pub fn unloaded() -> Self {
+        MapBlock {
+            map_format_version: 29,
+            flags: 0,
+            lighting_complete: 0,
+            timestamp: 0xffffffff,
+            name_id_mappings: HashMap::from([(0, b"ignore".to_vec())]),
+            content_width: 2,
+            params_width: 2,
+            param0: [0; MAPBLOCK_SIZE],
+            param1: [0; MAPBLOCK_SIZE],
+            param2: [0; MAPBLOCK_SIZE],
+            node_metadata: vec![],
+            static_object_version: 0,
+            static_objects: vec![],
+        }
+    }
+
     /// Gets the content type string from a content ID
     pub fn content_from_id(&self, content_id: u16) -> &[u8] {
         self.name_id_mappings
@@ -231,9 +250,9 @@ impl MapBlock {
             .unwrap_or(CONTENT_UNKNOWN)
     }
 
-    /// Queries the mapblock for a node on the given relative coordinates
-    pub fn get_node_at(&self, x: u8, y: u8, z: u8) -> Node {
-        let index = Position::new(x, y, z).as_node_index() as usize;
+    /// Queries the mapblock for a node on the given mapblock-relative coordinates
+    pub fn get_node_at(&self, relative_node_pos: Position) -> Node {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
         let param0 = self.content_from_id(self.param0[index]);
         Node {
             param0: std::string::String::from_utf8_lossy(param0).into(),
@@ -241,9 +260,69 @@ impl MapBlock {
             param2: self.param2[index],
         }
     }
+
+    /// Gather the content ID associated with this content name, if present
+    pub fn get_content_id(&self, content: &[u8]) -> Option<u16> {
+        self.name_id_mappings.iter().find(|(_k, v)| v == &content).map(|(&k, _v)| k)
+    }
+
+    /// Add a new content string, returning a new content ID
+    ///
+    /// Panics if there are already ~65k content IDs present
+    fn add_content(&mut self, content: Vec<u8>) -> u16 {
+        for id in u16::MIN .. u16::MAX {
+            if !self.name_id_mappings.contains_key(&id) {
+                // We may safely unwrap here, as the key was not present
+                self.name_id_mappings.insert(id, content).unwrap();
+                return id
+            }
+        }
+        panic!("Did not find a fresh content ID in whole u16 range")
+        // Instead of panicking, one could also search for an unused content ID
+    }
+
+    /// Return the content ID associated with this content name
+    ///
+    /// If not present yet, it is created.
+    pub(crate) fn get_or_create_content_id(&mut self, content: &[u8]) -> u16 {
+        self.get_content_id(content)
+            .unwrap_or_else(|| self.add_content(content.to_vec()))
+    }
+
+    /// Sets the content string of this node
+    pub fn set_content(&mut self, relative_node_pos: Position, content_id: u16) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param0[index] = content_id
+    }
+
+    /// Sets the param1 of this node
+    pub fn set_param1(&mut self, relative_node_pos: Position, param1: u8) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param1[index] = param1
+    }
+
+    /// Sets the param2 of this node
+    pub fn set_param2(&mut self, relative_node_pos: Position, param2: u8) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param2[index] = param2
+    }
+
+    /// Returns an iterator over all content types that appear in name-id-mapping
+    ///
+    /// Example:
+    /// ```
+    /// use minetestworld::MapBlock;
+    ///
+    /// let block = MapBlock::unloaded();
+    /// let content_names: Vec<&[u8]> = block.content_names().collect();
+    /// assert_eq!(vec![b"ignore"], content_names);
+    /// ```
+    pub fn content_names(&self) -> impl Iterator<Item=&[u8]> {
+        self.name_id_mappings.values().map(Vec::as_slice)
+    }
 }
 
-// Helper functions to read smaller chunks of data
+// Helper functions to read smaller chunks of binary data
 
 fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBlockError> {
     if read_u8(data)? != 0 {
@@ -275,7 +354,7 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
 
 /// Iterates through the nodes in a mapblock.
 ///
-/// This yields tuples in the form ([relative_position][`Position`],
+/// This yields tuples in the form ([world_position][`Position`],
 /// [node][`Node`]).
 pub struct NodeIter {
     mapblock: MapBlock,
