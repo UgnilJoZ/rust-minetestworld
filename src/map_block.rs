@@ -3,7 +3,7 @@
 use crate::positions::Position;
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[cfg(feature = "smartstring")]
 type String = smartstring::SmartString<smartstring::LazyCompact>;
@@ -227,7 +227,7 @@ impl MapBlock {
             param1: [0; MAPBLOCK_SIZE],
             param2: [0; MAPBLOCK_SIZE],
             node_metadata: vec![],
-            static_object_version: 0,
+            node_timers: vec![],
             static_objects: vec![],
         };
 
@@ -245,6 +245,31 @@ impl MapBlock {
         Ok(mapblock)
     }
 
+    /// Serializes the map block into the binay format
+    pub fn to_binary(&self) -> std::io::Result<Vec<u8>> {
+        let mut encoder = zstd::stream::Encoder::new(vec![29], 0)?;
+
+        encoder.write(&self.flags.to_be_bytes())?;
+        encoder.write(&self.lighting_complete.to_be_bytes())?;
+        encoder.write(&self.timestamp.to_be_bytes())?;
+        write_name_id_mappings(&self.name_id_mappings, &mut encoder)?;
+
+        encoder.write(&[2])?; // content_width
+        encoder.write(&[2])?; // params_width
+
+        for value in self.param0 {
+            encoder.write(&value.to_be_bytes())?;
+        }
+        encoder.write(&self.param1)?;
+        encoder.write(&self.param2)?;
+
+        write_node_metadata(&self.node_metadata, &mut encoder)?;
+        write_static_objects(&self.static_objects, &mut encoder)?;
+        write_node_timers(&self.node_timers, &mut encoder)?;
+
+        encoder.finish()
+    }
+
     /// Creates an unloaded map block that only contains CONTENT_IGNORE
     pub fn unloaded() -> Self {
         MapBlock {
@@ -259,7 +284,7 @@ impl MapBlock {
             param1: [0; MAPBLOCK_SIZE],
             param2: [0; MAPBLOCK_SIZE],
             node_metadata: vec![],
-            static_object_version: 0,
+            node_timers: vec![],
             static_objects: vec![],
         }
     }
@@ -294,8 +319,7 @@ impl MapBlock {
     fn add_content(&mut self, content: Vec<u8>) -> u16 {
         for id in u16::MIN .. u16::MAX {
             if !self.name_id_mappings.contains_key(&id) {
-                // We may safely unwrap here, as the key was not present
-                self.name_id_mappings.insert(id, content).unwrap();
+                assert_eq!(self.name_id_mappings.insert(id, content), None);
                 return id
             }
         }
@@ -306,7 +330,7 @@ impl MapBlock {
     /// Return the content ID associated with this content name
     ///
     /// If not present yet, it is created.
-    pub(crate) fn get_or_create_content_id(&mut self, content: &[u8]) -> u16 {
+    pub fn get_or_create_content_id(&mut self, content: &[u8]) -> u16 {
         self.get_content_id(content)
             .unwrap_or_else(|| self.add_content(content.to_vec()))
     }
@@ -363,11 +387,10 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
         if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
             return Err(MapBlockError::BlobMalformed(
                 format!(
-                    "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
+                    "Node ID {id} appears multiple times in name_id_mappings: \"{}\" and \"{}\"",
                     std::string::String::from_utf8_lossy(&old_name),
                     std::string::String::from_utf8_lossy(&name)
-                )
-                .into(),
+                ),
             ));
         }
     }
