@@ -23,6 +23,12 @@ use url::Host;
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::Position;
 
+const SQLITE_UPSERT: &str = "INSERT INTO blocks VALUES (?, ?)
+ ON CONFLICT(pos) DO UPDATE SET data=excluded.data";
+
+const POSTGRES_UPSERT: &str = "INSERT INTO blocks VALUES($1, $2, $3, $4)
+ ON CONFLICT(x,y,z) DO UPDATE SET data=excluded.data";
+
 /// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
 pub enum MapDataError {
@@ -48,6 +54,10 @@ pub enum MapDataError {
     /// This mapblock does not exist
     #[error("MapBlock {0} does not exist")]
     MapBlockNonexistent(i64),
+
+    /// An IO related error
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 /// A handle to the world data
@@ -85,14 +95,14 @@ impl MapData {
     /// use async_std::task;
     ///
     /// let meta = task::block_on(async {
-    ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
+    ///     MapData::from_sqlite_file("TestWorld/map.sqlite", false).await.unwrap();
     /// });
     /// ```
-    pub async fn from_sqlite_file(filename: impl AsRef<Path>) -> Result<MapData, MapDataError> {
+    pub async fn from_sqlite_file(filename: impl AsRef<Path>, read_only: bool) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
                 SqliteConnectOptions::new()
-                    .immutable(true)
+                    .immutable(read_only)
                     .filename(filename),
             )
             .await?,
@@ -231,6 +241,45 @@ impl MapData {
         Ok(MapBlock::from_data(
             self.get_block_data(pos).await?.as_slice(),
         )?)
+    }
+
+    /// Sets the backend's mapblock data for position `pos` to `data`
+    pub async fn set_mapblock_data(&self, pos: Position, data: &[u8]) -> Result<(), MapDataError> {
+        match self {
+            #[cfg(feature = "sqlite")]
+            MapData::Sqlite(pool) => sqlx::query(SQLITE_UPSERT)
+                .bind(pos.as_database_key())
+                .bind(data)
+                .execute(pool)
+                .await
+                .map(|_| {})
+                .map_err(|e| sqlx::Error::from(e).into()),
+            #[cfg(feature = "postgres")]
+            MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
+                .bind(pos.x)
+                .bind(pos.y)
+                .bind(pos.z)
+                .bind(data)
+                .execute(pool)
+                .await
+                .map(|_| {})
+                .map_err(|e| sqlx::Error::from(e).into()),
+            #[cfg(feature = "redis")]
+            MapData::Redis { connection, hash } => {
+                connection
+                    .clone()
+                    .hset(hash, pos.as_database_key(), data)
+                    .await
+                    .map_err(|e| e.into())
+            }
+        }
+    }
+
+    /// Inserts or replaces the map block at `pos`
+    pub async fn set_mapblock(&self, pos: Position, block: MapBlock) -> Result<(), MapDataError> {
+        self
+            .set_mapblock_data(pos, &block.to_binary()?)
+            .await
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
