@@ -55,6 +55,12 @@ fn read_u32_be(r: &mut impl Read) -> std::io::Result<u32> {
     Ok(u32::from_be_bytes(buffer))
 }
 
+fn read_i32_be(r: &mut impl Read) -> std::io::Result<i32> {
+    let mut buffer = [0; 4];
+    r.read_exact(&mut buffer)?;
+    Ok(i32::from_be_bytes(buffer))
+}
+
 /// A single voxel
 #[derive(Debug)]
 pub struct Node {
@@ -84,19 +90,33 @@ pub enum MapBlockError {
     /// The 'wrong' version is contained.
     #[error("Wrong mapblock format: Version {0} is not supported")]
     MapVersionError(u8),
+
+    /// Node metadata version is not 2, hence unsupported
+    #[error("Node metadata version {0} is not supported")]
+    UnsupportedNodeMetadataVersion(u8),
 }
 
 /// Maps mapblock-local content IDs to content types
 pub type NameIdMappings = HashMap<u16, Vec<u8>>;
 
+#[derive(Debug)]
+pub struct NodeVar {
+    key: Vec<u8>,
+    value: Vec<u8>,
+    is_private: bool,
+}
+
 /// Metadata of a node
 ///
 /// e.g. the inventory of a chest or the text of a sign
+#[derive(Debug)]
 pub struct NodeMetadata {
     /// The node index in the flat node array
-    pub position: u16,
-    /// A dictionary containing the metadata values
-    pub vars: HashMap<String, Vec<u8>>,
+    pub position: Position,
+    /// Metadata variables
+    pub vars: Vec<NodeVar>,
+    /// Serialized inventory
+    pub inventory: Vec<u8>,
 }
 
 /// Objects in the world that are not nodes
@@ -105,11 +125,11 @@ pub struct NodeMetadata {
 pub struct StaticObject {
     /// Type ID
     pub type_id: u8,
-    /// x coordinate
+    /// x coordinate * 1000
     pub x: i32,
-    /// y coordinate
+    /// y coordinate * 1000
     pub y: i32,
-    /// z coordinate
+    /// z coordinate * 1000
     pub z: i32,
     /// The object's data
     pub data: Vec<u8>,
@@ -118,7 +138,7 @@ pub struct StaticObject {
 /// Represents a running node timer
 pub struct NodeTimer {
     /// The node index in the flat node array
-    pub timer_position: u16,
+    pub position: Position,
     /// Timeout in milliseconds
     pub timeout: i32,
     /// Elapsed time in milliseconds
@@ -158,10 +178,10 @@ pub struct MapBlock {
     pub param2: [u8; 4096],
     /// Node metadata
     pub node_metadata: Vec<NodeMetadata>,
-    /// Static object version
-    pub static_object_version: u8,
     /// Objects that are no nodes
     pub static_objects: Vec<StaticObject>,
+    /// Node timers
+    pub node_timers: Vec<NodeTimer>,
 }
 
 impl MapBlock {
@@ -218,7 +238,9 @@ impl MapBlock {
         data.read_exact(&mut mapblock.param1)?;
         data.read_exact(&mut mapblock.param2)?;
 
-        // TODO node metadata, static objects
+        mapblock.node_metadata = read_node_metadata(&mut data).unwrap();
+        mapblock.static_objects = read_static_objects(&mut data).unwrap();
+        mapblock.node_timers = read_timers(&mut data).unwrap();
 
         Ok(mapblock)
     }
@@ -350,6 +372,182 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
         }
     }
     Ok(name_id_mappings)
+}
+
+fn write_name_id_mappings(mappings: &NameIdMappings, dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write(&[0])?; // Version byte
+    dest.write(&(mappings.len() as u16).to_be_bytes())?; // TODO handle length greater than 65k
+    for (key, value) in mappings {
+        dest.write(&key.to_be_bytes())?;
+        dest.write(&(value.len() as u16).to_be_bytes())?;
+        dest.write(value)?;
+    }
+    Ok(())
+}
+
+fn read_inventory(data: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    let mut result = vec![];
+    let mut line = vec![];
+
+    for byte in data.bytes() {
+    let byte = byte?;
+        line.push(byte);
+        if byte == 10 {
+            result.extend_from_slice(&mut line);
+            if line == b"EndInventory\n" {
+                return Ok(result)
+            }
+            line.clear();
+        }
+    }
+
+    Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "inventory"))
+}
+
+fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBlockError> {
+    let metadata_version = read_u8(data)?;
+    if metadata_version == 0 {
+        return Ok(vec![]);
+    }
+    if metadata_version != 2 {
+        return Err(MapBlockError::UnsupportedNodeMetadataVersion(metadata_version));
+    }
+    let metadata_count = read_u16_be(data)?;
+    let metadata = Vec::with_capacity(metadata_count as usize);
+
+    for _ in 0..metadata_count {
+        let mut metadatum = NodeMetadata {
+            position: Position::from_node_index(read_u16_be(data)?),
+            vars: Default::default(),
+            inventory: vec![],
+        };
+
+        let var_count = read_u32_be(data)?;
+        for _ in 0..var_count {
+            let mut key = vec![0; read_u16_be(data)? as usize];
+            data.read_exact(&mut key)?;
+            let mut value = vec![0; read_u32_be(data)? as usize];
+            data.read_exact(&mut value)?;
+            let is_private = read_u8(data)?;
+            if is_private > 1 {
+                return Err(MapBlockError::BlobMalformed("is_private is not 0 or 1".into()));
+            }
+
+            metadatum.vars.push(NodeVar {
+                key, value,
+                is_private: is_private == 1,
+            });
+        }
+        metadatum.inventory = read_inventory(data)?;
+    }
+
+    Ok(metadata)
+}
+
+fn write_node_metadata(data: &[NodeMetadata], dest: &mut impl Write) -> std::io::Result<()> {
+    if data.is_empty() {
+        dest.write(&[0])?;
+    } else {
+        dest.write(&[2])?;
+        dest.write(&(data.len() as u16).to_be_bytes())?; // TODO handle count greater than 65k
+        for metadatum in data {
+            dest.write(&metadatum.position.as_node_index().to_be_bytes())?;
+            for var in &metadatum.vars {
+                dest.write(&(var.key.len() as u16).to_be_bytes())?;
+                dest.write(&var.key)?;
+                dest.write(&(var.value.len() as u32).to_be_bytes())?;
+                dest.write(&var.value)?;
+                dest.write(&[var.is_private as u8])?;
+            }
+            dest.write(&metadatum.inventory)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_object_pos(data: &mut impl Read) -> std::io::Result<(i32, i32, i32)> {
+    let mut bytes = [0; 12];
+    data.read_exact(&mut bytes)?;
+    Ok((
+        // We can safely unwrap here as the slicing numbers are trivially correct
+        i32::from_be_bytes(bytes[0..4].try_into().unwrap()),
+        i32::from_be_bytes(bytes[4..8].try_into().unwrap()),
+        i32::from_be_bytes(bytes[8..12].try_into().unwrap()),
+    ))
+}
+
+fn read_static_objects(source: &mut impl Read) -> Result<Vec<StaticObject>, MapBlockError> {
+    let version = read_u8(source)?;
+    if version != 0 {
+        return Err(MapBlockError::BlobMalformed(
+            format!("static objects version should be 0, is {} ", version)
+        ))
+    }
+    let count = read_u16_be(source)?;
+    let mut objects = Vec::with_capacity(count as usize);
+
+    for _ in 0..count {
+        let type_id = read_u8(source)?;
+        let (x,y,z) = read_object_pos(source)?;
+        let data_size = read_u16_be(source)?;
+        let mut data = vec![0; data_size as usize];
+        source.read_exact(&mut data)?;
+        objects.push(StaticObject {
+            type_id, x, y, z, data
+        })
+    }
+
+    Ok(objects)
+}
+
+fn write_static_objects(data: &[StaticObject], dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write(&[0])?;
+    dest.write(&(data.len() as u16).to_be_bytes())?;
+    for object in data {
+        for i in [object.x, object.y, object.z] {
+            dest.write(&i.to_be_bytes())?;
+        }
+        dest.write(&(object.data.len() as u16).to_be_bytes())?;
+        dest.write(&object.data)?;
+    }
+    Ok(())
+}
+
+fn read_timers(data: &mut impl Read) -> Result<Vec<NodeTimer>, MapBlockError> {
+    let timer_size = read_u8(data)?;
+    if timer_size != 10 {
+        return Err(MapBlockError::BlobMalformed(
+            format!("timer size should be 10, is {} ", timer_size)
+        ))
+    }
+
+    let count = read_u16_be(data)?;
+    let mut timers = Vec::with_capacity(count as usize);
+
+    for _ in 0..count {
+        let position = Position::from_node_index(read_u16_be(data)?);
+        let timeout = read_i32_be(data)?;
+        let elapsed = read_i32_be(data)?;
+        timers.push(NodeTimer {
+            position, timeout, elapsed,
+        })
+    }
+
+    Ok(timers)
+}
+
+fn write_node_timers(data: &[NodeTimer], dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write(&[10])?; // Data length of node timers
+
+    dest.write(&(data.len() as u16).to_be_bytes())?;
+    for timer in data {
+        dest.write(&timer.position.as_node_index().to_be_bytes())?;
+        dest.write(&timer.timeout.to_be_bytes())?;
+        dest.write(&timer.elapsed.to_be_bytes())?;
+    }
+
+    Ok(())
 }
 
 /// Iterates through the nodes in a mapblock.
