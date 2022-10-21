@@ -5,14 +5,14 @@ use crate::World;
 
 #[async_std::test]
 async fn db_exists() {
-    MapData::from_sqlite_file("TestWorld/map.sqlite")
+    MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
 }
 
 #[async_std::test]
 async fn can_query() {
-    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite")
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
     assert_eq!(mapdata.all_mapblock_positions().await.unwrap().len(), 5923);
@@ -46,7 +46,7 @@ fn can_parse_mapblock() {
 
 #[async_std::test]
 async fn can_parse_all_mapblocks() {
-    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite")
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
     let positions: Vec<_> = mapdata.all_mapblock_positions().await.unwrap();
@@ -64,7 +64,7 @@ async fn can_parse_all_mapblocks() {
 
 #[async_std::test]
 async fn count_nodes() {
-    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite")
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
     let count = mapdata
