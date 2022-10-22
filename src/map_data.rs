@@ -23,6 +23,9 @@ use url::Host;
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::Position;
 
+const POSTGRES_QUERY: &str = "SELECT data FROM blocks
+ WHERE (posx = $1 AND posy = $2 AND posz = $3)";
+
 const SQLITE_UPSERT: &str = "INSERT INTO blocks VALUES (?, ?)
  ON CONFLICT(pos) DO UPDATE SET data=excluded.data";
 
@@ -52,12 +55,25 @@ pub enum MapDataError {
     MapBlockError(#[from] MapBlockError),
 
     /// This mapblock does not exist
-    #[error("MapBlock {0} does not exist")]
-    MapBlockNonexistent(i64),
+    #[error("MapBlock {0:?} does not exist")]
+    MapBlockNonexistent(Position),
 
     /// An IO related error
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+}
+
+impl MapDataError {
+    /// Converts an SQL error to a mapblock error
+    ///
+    /// while converting `RowNotFound` to `MapBlockNonexistent(pos)`
+    fn from_sqlx_error(e: sqlx::Error, pos: Position) -> MapDataError {
+        if let sqlx::Error::RowNotFound = e {
+            MapDataError::MapBlockNonexistent(pos)
+        } else {
+            MapDataError::SqlError(e)
+        }
+    }
 }
 
 /// A handle to the world data
@@ -205,24 +221,31 @@ impl MapData {
         let pos_index = pos.as_database_key();
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => Ok(sqlx::query("SELECT data FROM blocks WHERE pos = ?")
+            MapData::Sqlite(pool) => sqlx::query("SELECT data FROM blocks WHERE pos = ?")
                 .bind(pos_index)
                 .fetch_one(pool)
-                .await?
-                .try_get("data")?),
+                .await
+                .and_then(|row| row
+                    .try_get("data")
+                )
+                .map_err(sqlx::Error::from)
+                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
-            MapData::Postgres(pool) => Ok(sqlx::query(
-                "SELECT data FROM blocks WHERE (posx = $1 AND posy = $2 AND posz = $3)",
-            )
-            .bind(pos.x)
-            .bind(pos.y)
-            .bind(pos.z)
-            .fetch_one(pool)
-            .await?
-            .try_get("data")?),
+            MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
+                .bind(pos.x)
+                .bind(pos.y)
+                .bind(pos.z)
+                .fetch_one(pool)
+                .await
+                .and_then(|row| row
+                    .try_get("data")
+                )
+                .map_err(sqlx::Error::from)
+                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                Ok(connection.clone().hget(hash.to_string(), pos_index).await?)
+                let value: Option<_> = connection.clone().hget(hash.to_string(), pos_index).await?;
+                value.ok_or(MapDataError::MapBlockNonexistent(pos))
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) => Ok(db
@@ -276,7 +299,7 @@ impl MapData {
     }
 
     /// Inserts or replaces the map block at `pos`
-    pub async fn set_mapblock(&self, pos: Position, block: MapBlock) -> Result<(), MapDataError> {
+    pub async fn set_mapblock(&self, pos: Position, block: &MapBlock) -> Result<(), MapDataError> {
         self
             .set_mapblock_data(pos, &block.to_binary()?)
             .await
