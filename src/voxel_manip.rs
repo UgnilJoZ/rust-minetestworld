@@ -36,7 +36,11 @@ impl VoxelManip {
             Entry::Occupied(e) => Ok(e.into_mut()),
             Entry::Vacant(e) => {
                 // If not in the database, create unloaded mapblock
-                let mapblock = self.map.get_mapblock(mapblock_pos).await?;
+                let mapblock = match self.map.get_mapblock(mapblock_pos).await {
+                    Ok(mapblock) => Ok(mapblock),
+                    Err(MapDataError::MapBlockNonexistent(_)) => Ok(MapBlock::unloaded()),
+                    Err(e) => Err(e),
+                }?;
                 Ok(e.insert(CacheEntry {
                     mapblock,
                     tainted: false,
