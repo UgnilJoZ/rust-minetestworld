@@ -2,6 +2,7 @@
 
 use crate::MapData;
 use crate::MapDataError;
+use crate::VoxelManip;
 use async_std::fs::File;
 use async_std::io::BufReader;
 use async_std::prelude::*;
@@ -91,13 +92,13 @@ impl World {
     ///     World::new("TestWorld").get_map_data().await.unwrap()
     /// });
     /// ```
-    pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
+    pub async fn get_map_data_backend(&self, read_only: bool) -> Result<MapData, WorldError> {
         let backend = self.get_backend_name().await?;
         match backend.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite3" => {
                 let World(path) = self;
-                Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
+                Ok(MapData::from_sqlite_file(path.join("map.sqlite"), read_only).await?)
             }
             #[cfg(feature = "postgres")]
             "postgresql" => {
@@ -139,6 +140,43 @@ impl World {
             }
             _ => Err(WorldError::UnknownBackend(backend)),
         }
+    }
+
+    /// Returns a handle to the map database
+    ///
+    /// It does not have to be explicitly closed, but may be not writable.
+    ///
+    /// ```
+    /// use minetestworld::World;
+    /// use async_std::task;
+    ///
+    /// let map_data = task::block_on(async {
+    ///     World::new("TestWorld").get_map_data().await.unwrap()
+    /// });
+    /// ```
+    pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
+        self.get_map_data_backend(true).await
+    }
+
+    /// Returns a writable handle to the map database
+    ///
+    /// It has to be explicitly closed, since the sqlite3 dirty flag may be set.
+    ///
+    /// ```ignore
+    /// use minetestworld::World;
+    /// use async_std::task;
+    ///
+    /// let map_data = task::block_on(async {
+    ///     World::new("TestWorld").get_mutable_map_data().await.unwrap()
+    /// });
+    /// ```
+    pub async fn get_mutable_map_data(&self) -> Result<MapData, WorldError> {
+        self.get_map_data_backend(true).await
+    }
+
+    /// Returns a VoxelManip with the ability to read and write nodes
+    pub async fn get_voxel_manip(&self, writable: bool) -> Result<VoxelManip, WorldError> {
+        Ok(VoxelManip::new(self.get_map_data_backend(!writable).await?))
     }
 }
 

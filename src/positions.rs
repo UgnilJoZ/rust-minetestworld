@@ -10,7 +10,7 @@ use crate::MAPBLOCK_LENGTH;
 ///
 /// In the latter case, the components are divided by the
 /// [chunk length](`crate::MAPBLOCK_LENGTH`).
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Position {
     /// "East direction". The direction in which the sun rises.
     pub x: i16,
@@ -29,6 +29,18 @@ impl std::ops::Add for Position {
             y: self.y + other.y,
             z: self.z + other.z,
         }
+    }
+}
+
+impl std::ops::Sub for Position {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+            Position {
+                x: self.x - rhs.x,
+                y: self.y - rhs.y,
+                z: self.z - rhs.z,
+            }
     }
 }
 
@@ -107,11 +119,18 @@ impl Position {
     }
 
     /// Return the mapblock position corresponding to this node position
-    pub(crate) fn mapblock_at(&self) -> Position {
+    pub fn mapblock_at(&self) -> Position {
         Position {
             x: div_floor(self.x, MAPBLOCK_LENGTH.into()),
             y: div_floor(self.y, MAPBLOCK_LENGTH.into()),
             z: div_floor(self.z, MAPBLOCK_LENGTH.into()),
         }
+    }
+
+    /// Split this node position into a mapblock position and a relative node position
+    pub fn split_at_block(&self) -> (Position, Position) {
+        let blockpos = self.mapblock_at();
+        let relative_pos = *self - blockpos * MAPBLOCK_LENGTH as i16;
+        (blockpos, relative_pos)
     }
 }
