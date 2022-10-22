@@ -99,6 +99,7 @@ pub enum MapBlockError {
 /// Maps mapblock-local content IDs to content types
 pub type NameIdMappings = HashMap<u16, Vec<u8>>;
 
+/// A single node variable, consisting of a key and a value
 #[derive(Debug)]
 pub struct NodeVar {
     key: Vec<u8>,
