@@ -11,7 +11,7 @@ This crate lets you read minetest worlds in a low-level way.
 As this crate returns async-std based futures, you have to specify that along the dependencies:
 ```toml
 [dependencies]
-minetestworld = "0.4"
+minetestworld = "0.5.1-rc.1"
 async-std = "1"
 ```
 
