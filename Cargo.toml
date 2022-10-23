@@ -1,11 +1,11 @@
 [package]
 name = "minetestworld"
-version = "0.4.0"
+version = "0.5.0-rc.1"
 authors = ["Jan Ole Zabel <jan.zabel@posteo.de>"]
 license = "AGPL-3.0"
 repository = "https://github.com/UgnilJoZ/rust-minetestworld/"
 documentation = "http://docs.rs/minetestworld"
-description = "Read Minetest worlds"
+description = "Read and modify Minetest worlds"
 edition = "2021"
 
 [dependencies]
