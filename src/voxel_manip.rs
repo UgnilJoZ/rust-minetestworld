@@ -16,6 +16,8 @@ struct CacheEntry {
 /// It allows fast reading from and writing to the world. In the latter case,
 /// all changes made have to be committed to the world after
 /// writing via [`VoxelManip::commit`].
+///
+/// ⚠️ Believe me, you want to do a world backup before modifying the map data.
 pub struct VoxelManip {
     map: MapData,
     mapblock_cache: HashMap<Position, CacheEntry>,
