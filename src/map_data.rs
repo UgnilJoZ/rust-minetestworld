@@ -28,7 +28,7 @@ const SQLITE_UPSERT: &str = "INSERT INTO blocks VALUES (?, ?)
  ON CONFLICT(pos) DO UPDATE SET data=excluded.data";
 
 const POSTGRES_UPSERT: &str = "INSERT INTO blocks VALUES($1, $2, $3, $4)
- ON CONFLICT(x,y,z) DO UPDATE SET data=excluded.data";
+ ON CONFLICT(posx,posy,posz) DO UPDATE SET data=excluded.data";
 
 /// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
