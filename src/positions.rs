@@ -1,8 +1,8 @@
 //! Contains functions and datatypes to work with world coordinates
 
-use std::ops::{Add, Rem};
-use num_integer::div_floor;
 use crate::MAPBLOCK_LENGTH;
+use num_integer::div_floor;
+use std::ops::{Add, Rem};
 
 /// Coordinates in the world
 ///
@@ -36,11 +36,11 @@ impl std::ops::Sub for Position {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-            Position {
-                x: self.x - rhs.x,
-                y: self.y - rhs.y,
-                z: self.z - rhs.z,
-            }
+        Position {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z,
+        }
     }
 }
 

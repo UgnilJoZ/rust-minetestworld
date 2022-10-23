@@ -112,7 +112,10 @@ impl MapData {
     ///     MapData::from_sqlite_file("TestWorld/map.sqlite", false).await.unwrap();
     /// });
     /// ```
-    pub async fn from_sqlite_file(filename: impl AsRef<Path>, read_only: bool) -> Result<MapData, MapDataError> {
+    pub async fn from_sqlite_file(
+        filename: impl AsRef<Path>,
+        read_only: bool,
+    ) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
                 SqliteConnectOptions::new()
@@ -223,9 +226,7 @@ impl MapData {
                 .bind(pos_index)
                 .fetch_one(pool)
                 .await
-                .and_then(|row| row
-                    .try_get("data")
-                )
+                .and_then(|row| row.try_get("data"))
                 .map_err(sqlx::Error::from)
                 .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
@@ -235,9 +236,7 @@ impl MapData {
                 .bind(pos.z)
                 .fetch_one(pool)
                 .await
-                .and_then(|row| row
-                    .try_get("data")
-                )
+                .and_then(|row| row.try_get("data"))
                 .map_err(sqlx::Error::from)
                 .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "redis")]
@@ -274,7 +273,7 @@ impl MapData {
                 .execute(pool)
                 .await
                 .map(|_| {})
-                .map_err(|e| sqlx::Error::from(e).into()),
+                .map_err(MapDataError::SqlError),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
                 .bind(pos.x)
@@ -284,23 +283,19 @@ impl MapData {
                 .execute(pool)
                 .await
                 .map(|_| {})
-                .map_err(|e| sqlx::Error::from(e).into()),
+                .map_err(MapDataError::SqlError),
             #[cfg(feature = "redis")]
-            MapData::Redis { connection, hash } => {
-                connection
-                    .clone()
-                    .hset(hash, pos.as_database_key(), data)
-                    .await
-                    .map_err(|e| e.into())
-            }
+            MapData::Redis { connection, hash } => connection
+                .clone()
+                .hset(hash, pos.as_database_key(), data)
+                .await
+                .map_err(|e| e.into()),
         }
     }
 
     /// Inserts or replaces the map block at `pos`
     pub async fn set_mapblock(&self, pos: Position, block: &MapBlock) -> Result<(), MapDataError> {
-        self
-            .set_mapblock_data(pos, &block.to_binary()?)
-            .await
+        self.set_mapblock_data(pos, &block.to_binary()?).await
     }
 
     /// Enumerate all nodes from the mapblock at `pos`

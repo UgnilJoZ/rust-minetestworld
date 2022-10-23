@@ -2,6 +2,7 @@
 
 use crate::positions::Position;
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
@@ -37,7 +38,7 @@ pub const MAPBLOCK_SIZE: usize =
 /// This content type string refers to an unknown content type
 pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
 
-// This content type string refers to a node that has not yet been generated
+/// This content type string refers to a node that has not yet been generated
 pub const CONTENT_IGNORE: &[u8] = b"ignore";
 
 fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
@@ -223,16 +224,16 @@ impl MapBlock {
 
         let content_width = read_u8(&mut data)?;
         if content_width != 2 {
-            return Err(MapBlockError::BlobMalformed(
-                format!("\"{content_width}\" is not the expected content_width").into(),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{content_width}\" is not the expected content_width"
+            )));
         }
 
         let params_width = read_u8(&mut data)?;
         if params_width != 2 {
-            return Err(MapBlockError::BlobMalformed(
-                format!("\"{params_width}\" is not the expected params_width").into(),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{params_width}\" is not the expected params_width"
+            )));
         }
 
         let mapblock = MapBlock {
@@ -321,17 +322,23 @@ impl MapBlock {
 
     /// Gather the content ID associated with this content name, if present
     pub fn get_content_id(&self, content: &[u8]) -> Option<u16> {
-        self.name_id_mappings.iter().find(|(_k, v)| v == &content).map(|(&k, _v)| k)
+        self.name_id_mappings
+            .iter()
+            .find(|(_k, v)| v == &content)
+            .map(|(&k, _v)| k)
     }
 
     /// Add a new content string, returning a new content ID
     ///
     /// Panics if there are already ~65k content IDs present
     fn add_content(&mut self, content: Vec<u8>) -> u16 {
-        for id in u16::MIN .. u16::MAX {
-            if !self.name_id_mappings.contains_key(&id) {
-                assert_eq!(self.name_id_mappings.insert(id, content), None);
-                return id
+        for id in u16::MIN..u16::MAX {
+            match self.name_id_mappings.entry(id) {
+                Entry::Occupied(_) => {}
+                Entry::Vacant(e) => {
+                    e.insert(content);
+                    return id;
+                }
             }
         }
         panic!("Did not find a fresh content ID in whole u16 range")
@@ -374,7 +381,7 @@ impl MapBlock {
     /// let content_names: Vec<&[u8]> = block.content_names().collect();
     /// assert_eq!(vec![b"ignore"], content_names);
     /// ```
-    pub fn content_names(&self) -> impl Iterator<Item=&[u8]> {
+    pub fn content_names(&self) -> impl Iterator<Item = &[u8]> {
         self.name_id_mappings.values().map(Vec::as_slice)
     }
 }
@@ -396,13 +403,11 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
         data.read_exact(&mut name)?;
 
         if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
-            return Err(MapBlockError::BlobMalformed(
-                format!(
-                    "Node ID {id} appears multiple times in name_id_mappings: \"{}\" and \"{}\"",
-                    std::string::String::from_utf8_lossy(&old_name),
-                    std::string::String::from_utf8_lossy(&name)
-                ),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "Node ID {id} appears multiple times in name_id_mappings: \"{}\" and \"{}\"",
+                std::string::String::from_utf8_lossy(&old_name),
+                std::string::String::from_utf8_lossy(&name)
+            )));
         }
     }
     Ok(name_id_mappings)
@@ -424,18 +429,21 @@ fn read_inventory(data: &mut impl Read) -> std::io::Result<Vec<u8>> {
     let mut line = vec![];
 
     for byte in data.bytes() {
-    let byte = byte?;
+        let byte = byte?;
         line.push(byte);
         if byte == 10 {
-            result.extend_from_slice(&mut line);
+            result.extend_from_slice(&line);
             if line == b"EndInventory\n" {
-                return Ok(result)
+                return Ok(result);
             }
             line.clear();
         }
     }
 
-    Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "inventory"))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "inventory",
+    ))
 }
 
 fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBlockError> {
@@ -444,7 +452,9 @@ fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBloc
         return Ok(vec![]);
     }
     if metadata_version != 2 {
-        return Err(MapBlockError::UnsupportedNodeMetadataVersion(metadata_version));
+        return Err(MapBlockError::UnsupportedNodeMetadataVersion(
+            metadata_version,
+        ));
     }
     let metadata_count = read_u16_be(data)?;
     let metadata = Vec::with_capacity(metadata_count as usize);
@@ -464,11 +474,14 @@ fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBloc
             data.read_exact(&mut value)?;
             let is_private = read_u8(data)?;
             if is_private > 1 {
-                return Err(MapBlockError::BlobMalformed("is_private is not 0 or 1".into()));
+                return Err(MapBlockError::BlobMalformed(
+                    "is_private is not 0 or 1".into(),
+                ));
             }
 
             metadatum.vars.push(NodeVar {
-                key, value,
+                key,
+                value,
                 is_private: is_private == 1,
             });
         }
@@ -514,21 +527,26 @@ fn read_object_pos(data: &mut impl Read) -> std::io::Result<(i32, i32, i32)> {
 fn read_static_objects(source: &mut impl Read) -> Result<Vec<StaticObject>, MapBlockError> {
     let version = read_u8(source)?;
     if version != 0 {
-        return Err(MapBlockError::BlobMalformed(
-            format!("static objects version should be 0, is {} ", version)
-        ))
+        return Err(MapBlockError::BlobMalformed(format!(
+            "static objects version should be 0, is {} ",
+            version
+        )));
     }
     let count = read_u16_be(source)?;
     let mut objects = Vec::with_capacity(count as usize);
 
     for _ in 0..count {
         let type_id = read_u8(source)?;
-        let (x,y,z) = read_object_pos(source)?;
+        let (x, y, z) = read_object_pos(source)?;
         let data_size = read_u16_be(source)?;
         let mut data = vec![0; data_size as usize];
         source.read_exact(&mut data)?;
         objects.push(StaticObject {
-            type_id, x, y, z, data
+            type_id,
+            x,
+            y,
+            z,
+            data,
         })
     }
 
@@ -551,9 +569,10 @@ fn write_static_objects(data: &[StaticObject], dest: &mut impl Write) -> std::io
 fn read_timers(data: &mut impl Read) -> Result<Vec<NodeTimer>, MapBlockError> {
     let timer_size = read_u8(data)?;
     if timer_size != 10 {
-        return Err(MapBlockError::BlobMalformed(
-            format!("timer size should be 10, is {} ", timer_size)
-        ))
+        return Err(MapBlockError::BlobMalformed(format!(
+            "timer size should be 10, is {} ",
+            timer_size
+        )));
     }
 
     let count = read_u16_be(data)?;
@@ -564,7 +583,9 @@ fn read_timers(data: &mut impl Read) -> Result<Vec<NodeTimer>, MapBlockError> {
         let timeout = read_i32_be(data)?;
         let elapsed = read_i32_be(data)?;
         timers.push(NodeTimer {
-            position, timeout, elapsed,
+            position,
+            timeout,
+            elapsed,
         })
     }
 

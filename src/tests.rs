@@ -1,8 +1,8 @@
 use crate::positions::Position;
 use crate::MapBlock;
 use crate::MapData;
-use crate::World;
 use crate::MapDataError;
+use crate::World;
 
 #[test]
 fn simple_math() {
@@ -42,7 +42,7 @@ async fn can_query() {
 
 #[async_std::test]
 async fn mapblock_miss() {
-    let position = Position{x: 0, y: 0, z: 0};
+    let position = Position { x: 0, y: 0, z: 0 };
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();

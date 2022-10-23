@@ -1,9 +1,9 @@
 //! Contains a type to more high-level world reading and writing
 
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
-use crate::{MapData, MapDataError, Position, MapBlock, Node};
+use crate::{MapBlock, MapData, MapDataError, Node, Position};
 type Result<T> = std::result::Result<T, MapDataError>;
 
 struct CacheEntry {
@@ -61,7 +61,11 @@ impl VoxelManip {
     }
 
     /// Do something with the mapblock at `blockpos` and mark it as modified
-    async fn modify_mapblock(&mut self, blockpos: Position, op: impl FnOnce(&mut MapBlock) -> ()) -> Result<()> {
+    async fn modify_mapblock(
+        &mut self,
+        blockpos: Position,
+        op: impl FnOnce(&mut MapBlock),
+    ) -> Result<()> {
         let mut entry = &mut self.get_entry(blockpos).await?;
         op(&mut entry.mapblock);
         entry.tainted = true;
@@ -76,7 +80,8 @@ impl VoxelManip {
             mapblock.set_content(nodepos, content_id);
             mapblock.set_param1(nodepos, node.param1);
             mapblock.set_param2(nodepos, node.param2);
-        }).await
+        })
+        .await
     }
 
     /// Sets the content string at this world position
@@ -89,7 +94,8 @@ impl VoxelManip {
         self.modify_mapblock(blockpos, |mapblock| {
             let content_id = mapblock.get_or_create_content_id(content);
             mapblock.set_content(nodepos, content_id);
-        }).await
+        })
+        .await
     }
 
     /// Sets the lighting parameter at this world position
@@ -97,7 +103,8 @@ impl VoxelManip {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
             mapblock.set_param1(nodepos, param1);
-        }).await
+        })
+        .await
     }
 
     /// Sets the param2 of the node at this world position
@@ -105,7 +112,8 @@ impl VoxelManip {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
             mapblock.set_param2(nodepos, param2);
-        }).await
+        })
+        .await
     }
 
     /// Returns true if the mapblock containing this world position is cached
@@ -134,4 +142,3 @@ impl VoxelManip {
         Ok(())
     }
 }
-

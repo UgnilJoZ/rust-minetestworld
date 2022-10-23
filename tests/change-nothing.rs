@@ -35,4 +35,3 @@ async fn test_nop() -> Result<(), Box<dyn Error>> {
     cleanup_result?;
     Ok(())
 }
-
