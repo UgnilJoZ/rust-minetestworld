@@ -12,9 +12,6 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "url")]
 use url::Url;
 
-#[cfg(feature = "smartstring")]
-use smartstring::alias::String;
-
 /// A Minetest world
 ///
 /// ```
@@ -208,7 +205,7 @@ pub enum WorldError {
 
 /// Converts a postgres connection string from keyvalue to URI
 #[cfg(feature = "postgres")]
-fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<String, String> {
+fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<std::string::String, std::string::String> {
     let mut params: HashMap<&str, &str> = keyword_value
         .split_whitespace()
         .filter_map(|s| s.split_once('='))
@@ -218,10 +215,10 @@ fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<String, String> 
     let host = params.remove("host").unwrap_or("localhost");
     url.set_host(Some(host)).map_err(|e| format!("{e}"))?;
     let port = params.remove("host").map(|s| u16::from_str_radix(s, 10)).ok_or_else(|| String::from("port is not a valid number"))?.unwrap_or(5432);
-    url.set_port(Some(port)).map_err(|_| String::new())?;
+    url.set_port(Some(port)).map_err(|_| std::string::String::new())?;
 
     if let Some(user) = params.remove("user") {
-        url.set_username(user).map_err(|_| String::new())?;
+        url.set_username(user).map_err(|_| std::string::String::new())?;
     }
     url.set_password(params.remove("password")).map_err(|_| String::new())?;
 

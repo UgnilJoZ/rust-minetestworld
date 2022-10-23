@@ -7,8 +7,6 @@ use futures::stream::TryStreamExt;
 use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
-#[cfg(feature = "smartstring")]
-use smartstring::alias::String;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::prelude::*;
 #[cfg(feature = "sqlite")]
@@ -94,7 +92,7 @@ pub enum MapData {
         /// The connection to the Redis instance
         connection: RedisConn,
         /// The hash in which the world's data is stored in
-        hash: String,
+        hash: std::string::String,
     },
 
     /// This variant is a thread-safe open LevelDB
@@ -145,7 +143,7 @@ impl MapData {
             ))?
             .get_multiplexed_async_std_connection()
             .await?,
-            hash: String::from(hash),
+            hash: hash.to_string(),
         })
     }
 

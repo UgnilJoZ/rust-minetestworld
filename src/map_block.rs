@@ -37,6 +37,7 @@ pub const MAPBLOCK_SIZE: usize =
 /// This content type string refers to an unknown content type
 pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
 
+// This content type string refers to a node that has not yet been generated
 pub const CONTENT_IGNORE: &[u8] = b"ignore";
 
 fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
@@ -97,7 +98,7 @@ pub enum MapBlockError {
     ///
     /// This variant contains a more detailed error message.
     #[error("MapBlock malformed: {0}")]
-    BlobMalformed(String),
+    BlobMalformed(std::string::String),
 
     #[error("Read error: {0}")]
     /// The underlying reader returned an error, which is contained.
