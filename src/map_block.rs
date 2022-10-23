@@ -37,6 +37,8 @@ pub const MAPBLOCK_SIZE: usize =
 /// This content type string refers to an unknown content type
 pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
 
+pub const CONTENT_IGNORE: &[u8] = b"ignore";
+
 fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
@@ -276,14 +278,14 @@ impl MapBlock {
         encoder.finish()
     }
 
-    /// Creates an unloaded map block that only contains CONTENT_IGNORE
+    /// Creates an unloaded map block that only contains [`CONTENT_IGNORE`]
     pub fn unloaded() -> Self {
         MapBlock {
             map_format_version: 29,
             flags: 0,
             lighting_complete: 0,
             timestamp: 0xffffffff,
-            name_id_mappings: HashMap::from([(0, b"ignore".to_vec())]),
+            name_id_mappings: HashMap::from([(0, Vec::from(CONTENT_IGNORE))]),
             content_width: 2,
             params_width: 2,
             param0: [0; MAPBLOCK_SIZE],
@@ -296,6 +298,8 @@ impl MapBlock {
     }
 
     /// Gets the content type string from a content ID
+    ///
+    /// If the ID is not present, [`CONTENT_UNKNOWN`] is returned.
     pub fn content_from_id(&self, content_id: u16) -> &[u8] {
         self.name_id_mappings
             .get(&content_id)

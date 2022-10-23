@@ -68,7 +68,7 @@ impl VoxelManip {
         Ok(())
     }
 
-    /// Set a voxel in the VoxelManip`s cache
+    /// Set a voxel in the VoxelManip's cache
     pub async fn set_node(&mut self, node_pos: Position, node: Node) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {

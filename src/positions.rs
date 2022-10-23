@@ -16,7 +16,7 @@ pub struct Position {
     pub x: i16,
     /// "Up" direction
     pub y: i16,
-    /// "North" direction
+    /// "North" direction. 90° left from the direction the sun rises.
     pub z: i16,
 }
 
