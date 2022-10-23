@@ -61,6 +61,22 @@ fn read_i32_be(r: &mut impl Read) -> std::io::Result<i32> {
     Ok(i32::from_be_bytes(buffer))
 }
 
+fn read_param0(r: &mut impl Read) -> std::io::Result<[u16; MAPBLOCK_SIZE]> {
+    let mut array = [0; MAPBLOCK_SIZE];
+
+    for p0 in array.iter_mut() {
+        *p0 = read_u16_be(r)?;
+    }
+
+    Ok(array)
+}
+
+fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
+    let mut params = [0; MAPBLOCK_SIZE];
+    r.read_exact(&mut params)?;
+    Ok(params)
+}
+
 /// A single voxel
 #[derive(Debug)]
 pub struct Node {
@@ -216,7 +232,7 @@ impl MapBlock {
             ));
         }
 
-        let mut mapblock = MapBlock {
+        let mapblock = MapBlock {
             map_format_version,
             flags,
             lighting_complete,
@@ -224,24 +240,13 @@ impl MapBlock {
             name_id_mappings,
             content_width,
             params_width,
-            param0: [0; MAPBLOCK_SIZE],
-            param1: [0; MAPBLOCK_SIZE],
-            param2: [0; MAPBLOCK_SIZE],
-            node_metadata: vec![],
-            node_timers: vec![],
-            static_objects: vec![],
+            param0: read_param0(&mut data)?,
+            param1: read_nodeparams(&mut data)?,
+            param2: read_nodeparams(&mut data)?,
+            node_metadata: read_node_metadata(&mut data)?,
+            static_objects: read_static_objects(&mut data)?,
+            node_timers: read_timers(&mut data)?,
         };
-
-        for p0 in mapblock.param0.iter_mut() {
-            *p0 = read_u16_be(&mut data)?;
-        }
-
-        data.read_exact(&mut mapblock.param1)?;
-        data.read_exact(&mut mapblock.param2)?;
-
-        mapblock.node_metadata = read_node_metadata(&mut data).unwrap();
-        mapblock.static_objects = read_static_objects(&mut data).unwrap();
-        mapblock.node_timers = read_timers(&mut data).unwrap();
 
         Ok(mapblock)
     }
