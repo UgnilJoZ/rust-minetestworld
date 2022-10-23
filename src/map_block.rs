@@ -257,19 +257,19 @@ impl MapBlock {
     pub fn to_binary(&self) -> std::io::Result<Vec<u8>> {
         let mut encoder = zstd::stream::Encoder::new(vec![29], 0)?;
 
-        encoder.write(&self.flags.to_be_bytes())?;
-        encoder.write(&self.lighting_complete.to_be_bytes())?;
-        encoder.write(&self.timestamp.to_be_bytes())?;
+        encoder.write_all(&self.flags.to_be_bytes())?;
+        encoder.write_all(&self.lighting_complete.to_be_bytes())?;
+        encoder.write_all(&self.timestamp.to_be_bytes())?;
         write_name_id_mappings(&self.name_id_mappings, &mut encoder)?;
 
-        encoder.write(&[2])?; // content_width
-        encoder.write(&[2])?; // params_width
+        encoder.write_all(&[2])?; // content_width
+        encoder.write_all(&[2])?; // params_width
 
         for value in self.param0 {
-            encoder.write(&value.to_be_bytes())?;
+            encoder.write_all(&value.to_be_bytes())?;
         }
-        encoder.write(&self.param1)?;
-        encoder.write(&self.param2)?;
+        encoder.write_all(&self.param1)?;
+        encoder.write_all(&self.param2)?;
 
         write_node_metadata(&self.node_metadata, &mut encoder)?;
         write_static_objects(&self.static_objects, &mut encoder)?;
@@ -408,12 +408,12 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
 }
 
 fn write_name_id_mappings(mappings: &NameIdMappings, dest: &mut impl Write) -> std::io::Result<()> {
-    dest.write(&[0])?; // Version byte
-    dest.write(&(mappings.len() as u16).to_be_bytes())?; // TODO handle length greater than 65k
+    dest.write_all(&[0])?; // Version byte
+    dest.write_all(&(mappings.len() as u16).to_be_bytes())?; // TODO handle length greater than 65k
     for (key, value) in mappings {
-        dest.write(&key.to_be_bytes())?;
-        dest.write(&(value.len() as u16).to_be_bytes())?;
-        dest.write(value)?;
+        dest.write_all(&key.to_be_bytes())?;
+        dest.write_all(&(value.len() as u16).to_be_bytes())?;
+        dest.write_all(value)?;
     }
     Ok(())
 }
@@ -479,20 +479,20 @@ fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBloc
 
 fn write_node_metadata(data: &[NodeMetadata], dest: &mut impl Write) -> std::io::Result<()> {
     if data.is_empty() {
-        dest.write(&[0])?;
+        dest.write_all(&[0])?;
     } else {
-        dest.write(&[2])?;
-        dest.write(&(data.len() as u16).to_be_bytes())?; // TODO handle count greater than 65k
+        dest.write_all(&[2])?;
+        dest.write_all(&(data.len() as u16).to_be_bytes())?; // TODO handle count greater than 65k
         for metadatum in data {
-            dest.write(&metadatum.position.as_node_index().to_be_bytes())?;
+            dest.write_all(&metadatum.position.as_node_index().to_be_bytes())?;
             for var in &metadatum.vars {
-                dest.write(&(var.key.len() as u16).to_be_bytes())?;
-                dest.write(&var.key)?;
-                dest.write(&(var.value.len() as u32).to_be_bytes())?;
-                dest.write(&var.value)?;
-                dest.write(&[var.is_private as u8])?;
+                dest.write_all(&(var.key.len() as u16).to_be_bytes())?;
+                dest.write_all(&var.key)?;
+                dest.write_all(&(var.value.len() as u32).to_be_bytes())?;
+                dest.write_all(&var.value)?;
+                dest.write_all(&[var.is_private as u8])?;
             }
-            dest.write(&metadatum.inventory)?;
+            dest.write_all(&metadatum.inventory)?;
         }
     }
 
@@ -535,14 +535,14 @@ fn read_static_objects(source: &mut impl Read) -> Result<Vec<StaticObject>, MapB
 }
 
 fn write_static_objects(data: &[StaticObject], dest: &mut impl Write) -> std::io::Result<()> {
-    dest.write(&[0])?;
-    dest.write(&(data.len() as u16).to_be_bytes())?;
+    dest.write_all(&[0])?;
+    dest.write_all(&(data.len() as u16).to_be_bytes())?;
     for object in data {
         for i in [object.x, object.y, object.z] {
-            dest.write(&i.to_be_bytes())?;
+            dest.write_all(&i.to_be_bytes())?;
         }
-        dest.write(&(object.data.len() as u16).to_be_bytes())?;
-        dest.write(&object.data)?;
+        dest.write_all(&(object.data.len() as u16).to_be_bytes())?;
+        dest.write_all(&object.data)?;
     }
     Ok(())
 }
@@ -571,13 +571,12 @@ fn read_timers(data: &mut impl Read) -> Result<Vec<NodeTimer>, MapBlockError> {
 }
 
 fn write_node_timers(data: &[NodeTimer], dest: &mut impl Write) -> std::io::Result<()> {
-    dest.write(&[10])?; // Data length of node timers
-
-    dest.write(&(data.len() as u16).to_be_bytes())?;
+    dest.write_all(&[10])?; // Data length of node timers
+    dest.write_all(&(data.len() as u16).to_be_bytes())?;
     for timer in data {
-        dest.write(&timer.position.as_node_index().to_be_bytes())?;
-        dest.write(&timer.timeout.to_be_bytes())?;
-        dest.write(&timer.elapsed.to_be_bytes())?;
+        dest.write_all(&timer.position.as_node_index().to_be_bytes())?;
+        dest.write_all(&timer.timeout.to_be_bytes())?;
+        dest.write_all(&timer.elapsed.to_be_bytes())?;
     }
 
     Ok(())
