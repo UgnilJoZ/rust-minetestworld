@@ -1,4 +1,5 @@
 use crate::positions::Position;
+use crate::world::keyvalue_to_uri_connectionstr;
 use crate::MapBlock;
 use crate::MapData;
 use crate::MapDataError;
@@ -120,4 +121,25 @@ fn node_index() {
             z: 15,
         }
     )
+}
+
+#[test]
+fn url_default_host() {
+    assert_eq!(
+        keyvalue_to_uri_connectionstr(""),
+        Ok("postgresql://localhost:5432".to_string())
+    );
+}
+
+#[test]
+fn url_malformed_port() {
+    assert!(keyvalue_to_uri_connectionstr("port=ß").is_err());
+}
+
+#[test]
+fn url_nondefault_values() {
+    assert_eq!(
+        keyvalue_to_uri_connectionstr("port=15432 host=localhorst dbname=mtdb user=u password=p"),
+        Ok("postgresql://u:p@localhorst:15432/mtdb".to_string())
+    );
 }

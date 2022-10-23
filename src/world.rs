@@ -205,7 +205,7 @@ pub enum WorldError {
 
 /// Converts a postgres connection string from keyvalue to URI
 #[cfg(feature = "postgres")]
-fn keyvalue_to_uri_connectionstr(
+pub(crate) fn keyvalue_to_uri_connectionstr(
     keyword_value: &str,
 ) -> Result<std::string::String, std::string::String> {
     let mut params: HashMap<&str, &str> = keyword_value
