@@ -218,10 +218,10 @@ fn keyvalue_to_uri_connectionstr(
     url.set_host(Some(host)).map_err(|e| format!("{e}"))?;
     let port = params
         .remove("port")
-        .map(|s| s
-            .parse::<u16>()
-            .or_else(|_| Err(String::from("port is not a valid number")))
-        )
+        .map(|s| {
+            s.parse::<u16>()
+                .map_err(|_| String::from("port is not a valid number"))
+        })
         .unwrap_or(Ok(5432))?;
     url.set_port(Some(port))
         .map_err(|_| std::string::String::new())?;
