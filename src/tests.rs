@@ -2,6 +2,19 @@ use crate::positions::Position;
 use crate::MapBlock;
 use crate::MapData;
 use crate::World;
+use crate::MapDataError;
+
+#[test]
+fn simple_math() {
+    assert_eq!(
+        Position::from_database_key(134270984),
+        Position { x: 8, y: 13, z: 8 }
+    );
+    assert_eq!(
+        Position::from_database_key(-184549374),
+        Position { x: 2, y: 0, z: -11 }
+    );
+}
 
 #[async_std::test]
 async fn db_exists() {
@@ -27,16 +40,18 @@ async fn can_query() {
     assert_eq!(block.len(), 40);
 }
 
-#[test]
-fn simple_math() {
-    assert_eq!(
-        Position::from_database_key(134270984),
-        Position { x: 8, y: 13, z: 8 }
-    );
-    assert_eq!(
-        Position::from_database_key(-184549374),
-        Position { x: 2, y: 0, z: -11 }
-    );
+#[async_std::test]
+async fn mapblock_miss() {
+    let position = Position{x: 0, y: 0, z: 0};
+    let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
+        .await
+        .unwrap();
+    let result = mapdata.get_mapblock(position).await;
+    if let Err(MapDataError::MapBlockNonexistent(pos)) = result {
+        assert_eq!(pos, position);
+    } else {
+        panic!("A missing map block should result in MapDataError::MapBlockNonexistent")
+    }
 }
 
 #[test]
