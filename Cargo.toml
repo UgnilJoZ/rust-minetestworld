@@ -10,13 +10,14 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1.0"
-sqlx = { version = "0.5", features = [ "runtime-async-std-native-tls" ], optional = true }
-redis = { version = "0.21.0", default-features = false, features = [ "async-std-comp" ], optional = true }
+sqlx = { version = "0.6", features = [ "runtime-async-std-native-tls" ], optional = true }
+redis = { version = "0.21", default-features = false, features = [ "async-std-comp" ], optional = true }
 leveldb-rs = { version = "0.0.7", optional = true }
 url = { version = "2.2", optional = true }
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
 zstd = "0.11"
+num-integer = "0.1" # Needed for div_floor
 
 [target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
 smartstring = {version = "1", optional = true}
@@ -25,5 +26,5 @@ smartstring = {version = "1", optional = true}
 default = ["redis", "sqlite", "postgres"]
 redis = ["dep:redis", "url"]
 sqlite = ["sqlx/sqlite"]
-postgres = ["sqlx/postgres"]
+postgres = ["sqlx/postgres", "url"]
 experimental-leveldb = ["leveldb-rs"]

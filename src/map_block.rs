@@ -1,9 +1,10 @@
 //! Contains data types and constants to work with MapBlocks
 
-use crate::positions::{mapblock_node_index, mapblock_node_position, Position};
+use crate::positions::Position;
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[cfg(feature = "smartstring")]
 type String = smartstring::SmartString<smartstring::LazyCompact>;
@@ -37,6 +38,9 @@ pub const MAPBLOCK_SIZE: usize =
 /// This content type string refers to an unknown content type
 pub const CONTENT_UNKNOWN: &[u8] = b"unknown";
 
+/// This content type string refers to a node that has not yet been generated
+pub const CONTENT_IGNORE: &[u8] = b"ignore";
+
 fn read_u8(r: &mut impl Read) -> std::io::Result<u8> {
     let mut buf = [0; 1];
     r.read_exact(&mut buf)?;
@@ -55,6 +59,28 @@ fn read_u32_be(r: &mut impl Read) -> std::io::Result<u32> {
     Ok(u32::from_be_bytes(buffer))
 }
 
+fn read_i32_be(r: &mut impl Read) -> std::io::Result<i32> {
+    let mut buffer = [0; 4];
+    r.read_exact(&mut buffer)?;
+    Ok(i32::from_be_bytes(buffer))
+}
+
+fn read_param0(r: &mut impl Read) -> std::io::Result<[u16; MAPBLOCK_SIZE]> {
+    let mut array = [0; MAPBLOCK_SIZE];
+
+    for p0 in array.iter_mut() {
+        *p0 = read_u16_be(r)?;
+    }
+
+    Ok(array)
+}
+
+fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
+    let mut params = [0; MAPBLOCK_SIZE];
+    r.read_exact(&mut params)?;
+    Ok(params)
+}
+
 /// A single voxel
 #[derive(Debug)]
 pub struct Node {
@@ -66,35 +92,52 @@ pub struct Node {
     pub param2: u8,
 }
 
-/// An error during the decoding of a MapBlock
+/// An error during the [decoding](`MapBlock::from_data`) of a MapBlock
 #[derive(thiserror::Error, Debug)]
 pub enum MapBlockError {
     /// The mapblock did not follow the expected binary structure.
     ///
     /// This variant contains a more detailed error message.
     #[error("MapBlock malformed: {0}")]
-    BlobMalformed(String),
+    BlobMalformed(std::string::String),
+
     #[error("Read error: {0}")]
     /// The underlying reader returned an error, which is contained.
     ReadError(#[from] std::io::Error),
+
     /// The mapblock does not have a current enough version.
     ///
     /// The 'wrong' version is contained.
     #[error("Wrong mapblock format: Version {0} is not supported")]
     MapVersionError(u8),
+
+    /// Node metadata version is not 2, hence unsupported
+    #[error("Node metadata version {0} is not supported")]
+    UnsupportedNodeMetadataVersion(u8),
 }
 
 /// Maps mapblock-local content IDs to content types
 pub type NameIdMappings = HashMap<u16, Vec<u8>>;
 
+/// A single node variable, consisting of a key and a value
+#[derive(Debug)]
+pub struct NodeVar {
+    key: Vec<u8>,
+    value: Vec<u8>,
+    is_private: bool,
+}
+
 /// Metadata of a node
 ///
 /// e.g. the inventory of a chest or the text of a sign
+#[derive(Debug)]
 pub struct NodeMetadata {
     /// The node index in the flat node array
-    pub position: u16,
-    /// A dictionary containing the metadata values
-    pub vars: HashMap<String, Vec<u8>>,
+    pub position: Position,
+    /// Metadata variables
+    pub vars: Vec<NodeVar>,
+    /// Serialized inventory
+    pub inventory: Vec<u8>,
 }
 
 /// Objects in the world that are not nodes
@@ -103,11 +146,11 @@ pub struct NodeMetadata {
 pub struct StaticObject {
     /// Type ID
     pub type_id: u8,
-    /// x coordinate
+    /// x coordinate * 1000
     pub x: i32,
-    /// y coordinate
+    /// y coordinate * 1000
     pub y: i32,
-    /// z coordinate
+    /// z coordinate * 1000
     pub z: i32,
     /// The object's data
     pub data: Vec<u8>,
@@ -115,8 +158,8 @@ pub struct StaticObject {
 
 /// Represents a running node timer
 pub struct NodeTimer {
-    ///The node index in the flat node array
-    pub timer_position: u16,
+    /// The node index in the flat node array
+    pub position: Position,
     /// Timeout in milliseconds
     pub timeout: i32,
     /// Elapsed time in milliseconds
@@ -154,12 +197,12 @@ pub struct MapBlock {
     pub param1: [u8; 4096],
     /// The param2 field of every node
     pub param2: [u8; 4096],
-    /// Nodfe metadata
+    /// Node metadata
     pub node_metadata: Vec<NodeMetadata>,
-    /// Static object version
-    pub static_object_version: u8,
     /// Objects that are no nodes
     pub static_objects: Vec<StaticObject>,
+    /// Node timers
+    pub node_timers: Vec<NodeTimer>,
 }
 
 impl MapBlock {
@@ -181,19 +224,19 @@ impl MapBlock {
 
         let content_width = read_u8(&mut data)?;
         if content_width != 2 {
-            return Err(MapBlockError::BlobMalformed(
-                format!("\"{content_width}\" is not the expected content_width").into(),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{content_width}\" is not the expected content_width"
+            )));
         }
 
         let params_width = read_u8(&mut data)?;
         if params_width != 2 {
-            return Err(MapBlockError::BlobMalformed(
-                format!("\"{params_width}\" is not the expected params_width").into(),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "\"{params_width}\" is not the expected params_width"
+            )));
         }
 
-        let mut mapblock = MapBlock {
+        let mapblock = MapBlock {
             map_format_version,
             flags,
             lighting_complete,
@@ -201,27 +244,64 @@ impl MapBlock {
             name_id_mappings,
             content_width,
             params_width,
-            param0: [0; MAPBLOCK_SIZE],
-            param1: [0; MAPBLOCK_SIZE],
-            param2: [0; MAPBLOCK_SIZE],
-            node_metadata: vec![],
-            static_object_version: 0,
-            static_objects: vec![],
+            param0: read_param0(&mut data)?,
+            param1: read_nodeparams(&mut data)?,
+            param2: read_nodeparams(&mut data)?,
+            node_metadata: read_node_metadata(&mut data)?,
+            static_objects: read_static_objects(&mut data)?,
+            node_timers: read_timers(&mut data)?,
         };
-
-        for p0 in mapblock.param0.iter_mut() {
-            *p0 = read_u16_be(&mut data)?;
-        }
-
-        data.read_exact(&mut mapblock.param1)?;
-        data.read_exact(&mut mapblock.param2)?;
-
-        // TODO node metadata, static objects
 
         Ok(mapblock)
     }
 
+    /// Serializes the map block into the binay format
+    pub fn to_binary(&self) -> std::io::Result<Vec<u8>> {
+        let mut encoder = zstd::stream::Encoder::new(vec![29], 0)?;
+
+        encoder.write_all(&self.flags.to_be_bytes())?;
+        encoder.write_all(&self.lighting_complete.to_be_bytes())?;
+        encoder.write_all(&self.timestamp.to_be_bytes())?;
+        write_name_id_mappings(&self.name_id_mappings, &mut encoder)?;
+
+        encoder.write_all(&[2])?; // content_width
+        encoder.write_all(&[2])?; // params_width
+
+        for value in self.param0 {
+            encoder.write_all(&value.to_be_bytes())?;
+        }
+        encoder.write_all(&self.param1)?;
+        encoder.write_all(&self.param2)?;
+
+        write_node_metadata(&self.node_metadata, &mut encoder)?;
+        write_static_objects(&self.static_objects, &mut encoder)?;
+        write_node_timers(&self.node_timers, &mut encoder)?;
+
+        encoder.finish()
+    }
+
+    /// Creates an unloaded map block that only contains [`CONTENT_IGNORE`]
+    pub fn unloaded() -> Self {
+        MapBlock {
+            map_format_version: 29,
+            flags: 0,
+            lighting_complete: 0,
+            timestamp: 0xffffffff,
+            name_id_mappings: HashMap::from([(0, Vec::from(CONTENT_IGNORE))]),
+            content_width: 2,
+            params_width: 2,
+            param0: [0; MAPBLOCK_SIZE],
+            param1: [0; MAPBLOCK_SIZE],
+            param2: [0; MAPBLOCK_SIZE],
+            node_metadata: vec![],
+            node_timers: vec![],
+            static_objects: vec![],
+        }
+    }
+
     /// Gets the content type string from a content ID
+    ///
+    /// If the ID is not present, [`CONTENT_UNKNOWN`] is returned.
     pub fn content_from_id(&self, content_id: u16) -> &[u8] {
         self.name_id_mappings
             .get(&content_id)
@@ -229,19 +309,84 @@ impl MapBlock {
             .unwrap_or(CONTENT_UNKNOWN)
     }
 
-    /// Queries the mapblock for a node on the given relative coordinates
-    pub fn get_node_at(&self, x: u8, y: u8, z: u8) -> Node {
-        let index = mapblock_node_index(x, y, z) as usize;
-        let param0 = self.content_from_id(self.param0[index as usize]);
+    /// Queries the mapblock for a node on the given mapblock-relative coordinates
+    pub fn get_node_at(&self, relative_node_pos: Position) -> Node {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        let param0 = self.content_from_id(self.param0[index]);
         Node {
             param0: std::string::String::from_utf8_lossy(param0).into(),
             param1: self.param1[index],
             param2: self.param2[index],
         }
     }
+
+    /// Gather the content ID associated with this content name, if present
+    pub fn get_content_id(&self, content: &[u8]) -> Option<u16> {
+        self.name_id_mappings
+            .iter()
+            .find(|(_k, v)| v == &content)
+            .map(|(&k, _v)| k)
+    }
+
+    /// Add a new content string, returning a new content ID
+    ///
+    /// Panics if there are already ~65k content IDs present
+    fn add_content(&mut self, content: Vec<u8>) -> u16 {
+        for id in u16::MIN..u16::MAX {
+            match self.name_id_mappings.entry(id) {
+                Entry::Occupied(_) => {}
+                Entry::Vacant(e) => {
+                    e.insert(content);
+                    return id;
+                }
+            }
+        }
+        panic!("Did not find a fresh content ID in whole u16 range")
+        // Instead of panicking, one could also search for an unused content ID
+    }
+
+    /// Return the content ID associated with this content name
+    ///
+    /// If not present yet, it is created.
+    pub fn get_or_create_content_id(&mut self, content: &[u8]) -> u16 {
+        self.get_content_id(content)
+            .unwrap_or_else(|| self.add_content(content.to_vec()))
+    }
+
+    /// Sets the content string of this node
+    pub fn set_content(&mut self, relative_node_pos: Position, content_id: u16) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param0[index] = content_id
+    }
+
+    /// Sets the param1 of this node
+    pub fn set_param1(&mut self, relative_node_pos: Position, param1: u8) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param1[index] = param1
+    }
+
+    /// Sets the param2 of this node
+    pub fn set_param2(&mut self, relative_node_pos: Position, param2: u8) {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        self.param2[index] = param2
+    }
+
+    /// Returns an iterator over all content types that appear in name-id-mapping
+    ///
+    /// Example:
+    /// ```
+    /// use minetestworld::MapBlock;
+    ///
+    /// let block = MapBlock::unloaded();
+    /// let content_names: Vec<&[u8]> = block.content_names().collect();
+    /// assert_eq!(vec![b"ignore"], content_names);
+    /// ```
+    pub fn content_names(&self) -> impl Iterator<Item = &[u8]> {
+        self.name_id_mappings.values().map(Vec::as_slice)
+    }
 }
 
-// Helper functions to read smaller chunks of data
+// Helper functions to read smaller chunks of binary data
 
 fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBlockError> {
     if read_u8(data)? != 0 {
@@ -258,22 +403,210 @@ fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBloc
         data.read_exact(&mut name)?;
 
         if let Some(old_name) = name_id_mappings.insert(id, name.clone()) {
-            return Err(MapBlockError::BlobMalformed(
-                format!(
-                    "Node ID {id} appears multiple times in name_id_mappings: {} and {}",
-                    std::string::String::from_utf8_lossy(&old_name),
-                    std::string::String::from_utf8_lossy(&name)
-                )
-                .into(),
-            ));
+            return Err(MapBlockError::BlobMalformed(format!(
+                "Node ID {id} appears multiple times in name_id_mappings: \"{}\" and \"{}\"",
+                std::string::String::from_utf8_lossy(&old_name),
+                std::string::String::from_utf8_lossy(&name)
+            )));
         }
     }
     Ok(name_id_mappings)
 }
 
+fn write_name_id_mappings(mappings: &NameIdMappings, dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write_all(&[0])?; // Version byte
+    dest.write_all(&(mappings.len() as u16).to_be_bytes())?; // TODO handle length greater than 65k
+    for (key, value) in mappings {
+        dest.write_all(&key.to_be_bytes())?;
+        dest.write_all(&(value.len() as u16).to_be_bytes())?;
+        dest.write_all(value)?;
+    }
+    Ok(())
+}
+
+fn read_inventory(data: &mut impl Read) -> std::io::Result<Vec<u8>> {
+    let mut result = vec![];
+    let mut line = vec![];
+
+    for byte in data.bytes() {
+        let byte = byte?;
+        line.push(byte);
+        if byte == 10 {
+            result.extend_from_slice(&line);
+            if line == b"EndInventory\n" {
+                return Ok(result);
+            }
+            line.clear();
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "inventory",
+    ))
+}
+
+fn read_node_metadata(data: &mut impl Read) -> Result<Vec<NodeMetadata>, MapBlockError> {
+    let metadata_version = read_u8(data)?;
+    if metadata_version == 0 {
+        return Ok(vec![]);
+    }
+    if metadata_version != 2 {
+        return Err(MapBlockError::UnsupportedNodeMetadataVersion(
+            metadata_version,
+        ));
+    }
+    let metadata_count = read_u16_be(data)?;
+    let metadata = Vec::with_capacity(metadata_count as usize);
+
+    for _ in 0..metadata_count {
+        let mut metadatum = NodeMetadata {
+            position: Position::from_node_index(read_u16_be(data)?),
+            vars: Default::default(),
+            inventory: vec![],
+        };
+
+        let var_count = read_u32_be(data)?;
+        for _ in 0..var_count {
+            let mut key = vec![0; read_u16_be(data)? as usize];
+            data.read_exact(&mut key)?;
+            let mut value = vec![0; read_u32_be(data)? as usize];
+            data.read_exact(&mut value)?;
+            let is_private = read_u8(data)?;
+            if is_private > 1 {
+                return Err(MapBlockError::BlobMalformed(
+                    "is_private is not 0 or 1".into(),
+                ));
+            }
+
+            metadatum.vars.push(NodeVar {
+                key,
+                value,
+                is_private: is_private == 1,
+            });
+        }
+        metadatum.inventory = read_inventory(data)?;
+    }
+
+    Ok(metadata)
+}
+
+fn write_node_metadata(data: &[NodeMetadata], dest: &mut impl Write) -> std::io::Result<()> {
+    if data.is_empty() {
+        dest.write_all(&[0])?;
+    } else {
+        dest.write_all(&[2])?;
+        dest.write_all(&(data.len() as u16).to_be_bytes())?; // TODO handle count greater than 65k
+        for metadatum in data {
+            dest.write_all(&metadatum.position.as_node_index().to_be_bytes())?;
+            for var in &metadatum.vars {
+                dest.write_all(&(var.key.len() as u16).to_be_bytes())?;
+                dest.write_all(&var.key)?;
+                dest.write_all(&(var.value.len() as u32).to_be_bytes())?;
+                dest.write_all(&var.value)?;
+                dest.write_all(&[var.is_private as u8])?;
+            }
+            dest.write_all(&metadatum.inventory)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_object_pos(data: &mut impl Read) -> std::io::Result<(i32, i32, i32)> {
+    let mut bytes = [0; 12];
+    data.read_exact(&mut bytes)?;
+    Ok((
+        // We can safely unwrap here as the slicing numbers are trivially correct
+        i32::from_be_bytes(bytes[0..4].try_into().unwrap()),
+        i32::from_be_bytes(bytes[4..8].try_into().unwrap()),
+        i32::from_be_bytes(bytes[8..12].try_into().unwrap()),
+    ))
+}
+
+fn read_static_objects(source: &mut impl Read) -> Result<Vec<StaticObject>, MapBlockError> {
+    let version = read_u8(source)?;
+    if version != 0 {
+        return Err(MapBlockError::BlobMalformed(format!(
+            "static objects version should be 0, is {} ",
+            version
+        )));
+    }
+    let count = read_u16_be(source)?;
+    let mut objects = Vec::with_capacity(count as usize);
+
+    for _ in 0..count {
+        let type_id = read_u8(source)?;
+        let (x, y, z) = read_object_pos(source)?;
+        let data_size = read_u16_be(source)?;
+        let mut data = vec![0; data_size as usize];
+        source.read_exact(&mut data)?;
+        objects.push(StaticObject {
+            type_id,
+            x,
+            y,
+            z,
+            data,
+        })
+    }
+
+    Ok(objects)
+}
+
+fn write_static_objects(data: &[StaticObject], dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write_all(&[0])?;
+    dest.write_all(&(data.len() as u16).to_be_bytes())?;
+    for object in data {
+        for i in [object.x, object.y, object.z] {
+            dest.write_all(&i.to_be_bytes())?;
+        }
+        dest.write_all(&(object.data.len() as u16).to_be_bytes())?;
+        dest.write_all(&object.data)?;
+    }
+    Ok(())
+}
+
+fn read_timers(data: &mut impl Read) -> Result<Vec<NodeTimer>, MapBlockError> {
+    let timer_size = read_u8(data)?;
+    if timer_size != 10 {
+        return Err(MapBlockError::BlobMalformed(format!(
+            "timer size should be 10, is {} ",
+            timer_size
+        )));
+    }
+
+    let count = read_u16_be(data)?;
+    let mut timers = Vec::with_capacity(count as usize);
+
+    for _ in 0..count {
+        let position = Position::from_node_index(read_u16_be(data)?);
+        let timeout = read_i32_be(data)?;
+        let elapsed = read_i32_be(data)?;
+        timers.push(NodeTimer {
+            position,
+            timeout,
+            elapsed,
+        })
+    }
+
+    Ok(timers)
+}
+
+fn write_node_timers(data: &[NodeTimer], dest: &mut impl Write) -> std::io::Result<()> {
+    dest.write_all(&[10])?; // Data length of node timers
+    dest.write_all(&(data.len() as u16).to_be_bytes())?;
+    for timer in data {
+        dest.write_all(&timer.position.as_node_index().to_be_bytes())?;
+        dest.write_all(&timer.timeout.to_be_bytes())?;
+        dest.write_all(&timer.elapsed.to_be_bytes())?;
+    }
+
+    Ok(())
+}
+
 /// Iterates through the nodes in a mapblock.
 ///
-/// This yields a tuple in the form ([relative_position][`Position`],
+/// This yields tuples in the form ([world_position][`Position`],
 /// [node][`Node`]).
 pub struct NodeIter {
     mapblock: MapBlock,
@@ -294,14 +627,15 @@ impl NodeIter {
 impl Iterator for NodeIter {
     /// The type this iterator yields.
     ///
-    /// This is a tuple consisting if the node and its relative position in the chunk.
+    /// This is a tuple consisting of the node and its position in the world.
     type Item = (Position, Node);
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.node_index;
         if index < 4096 {
             self.node_index += 1;
-            let pos = self.mapblock_position + mapblock_node_position(index);
+            let pos =
+                self.mapblock_position * MAPBLOCK_LENGTH as i16 + Position::from_node_index(index);
             let param0 = self
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);

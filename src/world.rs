@@ -2,14 +2,15 @@
 
 use crate::MapData;
 use crate::MapDataError;
+use crate::VoxelManip;
 use async_std::fs::File;
 use async_std::io::BufReader;
 use async_std::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "smartstring")]
-use smartstring::alias::String;
+#[cfg(feature = "url")]
+use url::Url;
 
 /// A Minetest world
 ///
@@ -88,13 +89,13 @@ impl World {
     ///     World::new("TestWorld").get_map_data().await.unwrap()
     /// });
     /// ```
-    pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
+    pub async fn get_map_data_backend(&self, read_only: bool) -> Result<MapData, WorldError> {
         let backend = self.get_backend_name().await?;
         match backend.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite3" => {
                 let World(path) = self;
-                Ok(MapData::from_sqlite_file(path.join("map.sqlite")).await?)
+                Ok(MapData::from_sqlite_file(path.join("map.sqlite"), read_only).await?)
             }
             #[cfg(feature = "postgres")]
             "postgresql" => {
@@ -137,6 +138,43 @@ impl World {
             _ => Err(WorldError::UnknownBackend(backend)),
         }
     }
+
+    /// Returns a handle to the map database
+    ///
+    /// It does not have to be explicitly closed, but may be not writable.
+    ///
+    /// ```
+    /// use minetestworld::World;
+    /// use async_std::task;
+    ///
+    /// let map_data = task::block_on(async {
+    ///     World::new("TestWorld").get_map_data().await.unwrap()
+    /// });
+    /// ```
+    pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
+        self.get_map_data_backend(true).await
+    }
+
+    /// Returns a writable handle to the map database
+    ///
+    /// It has to be explicitly closed, since the sqlite3 dirty flag may be set.
+    ///
+    /// ```ignore
+    /// use minetestworld::World;
+    /// use async_std::task;
+    ///
+    /// let map_data = task::block_on(async {
+    ///     World::new("TestWorld").get_mutable_map_data().await.unwrap()
+    /// });
+    /// ```
+    pub async fn get_mutable_map_data(&self) -> Result<MapData, WorldError> {
+        self.get_map_data_backend(true).await
+    }
+
+    /// Returns a VoxelManip with the ability to read and write nodes
+    pub async fn get_voxel_manip(&self, writable: bool) -> Result<VoxelManip, WorldError> {
+        Ok(VoxelManip::new(self.get_map_data_backend(!writable).await?))
+    }
 }
 
 /// Represents a failure to interact with the world
@@ -167,37 +205,39 @@ pub enum WorldError {
 
 /// Converts a postgres connection string from keyvalue to URI
 #[cfg(feature = "postgres")]
-fn keyvalue_to_uri_connectionstr(keyword_value: &str) -> Result<String, String> {
+pub(crate) fn keyvalue_to_uri_connectionstr(
+    keyword_value: &str,
+) -> Result<std::string::String, std::string::String> {
     let mut params: HashMap<&str, &str> = keyword_value
         .split_whitespace()
         .filter_map(|s| s.split_once('='))
         .collect();
 
+    let mut url = Url::parse("postgresql://").unwrap();
     let host = params.remove("host").unwrap_or("localhost");
-    let mut url: String = if let Some(port) = params.remove("port") {
-        format!("{host}:{port}").into()
-    } else {
-        host.to_string().into()
-    };
+    url.set_host(Some(host)).map_err(|e| format!("{e}"))?;
+    let port = params
+        .remove("port")
+        .map(|s| {
+            s.parse::<u16>()
+                .map_err(|_| String::from("port is not a valid number"))
+        })
+        .unwrap_or(Ok(5432))?;
+    url.set_port(Some(port))
+        .map_err(|_| std::string::String::new())?;
 
-    let user = params.remove("user");
-    let password = params.remove("password");
-    if let (Some(user), Some(password)) = (user, password) {
-        url = format!("{user}:{password}@{url}").into();
+    if let Some(user) = params.remove("user") {
+        url.set_username(user)
+            .map_err(|_| std::string::String::new())?;
     }
-    url = format!("postgresql://{url}").into();
-    if let Some(dbname) = params.remove("dbname") {
-        url = format!("{url}/{dbname}").into();
-        if !params.is_empty() {
-            url.push_str(
-                &params
-                    .iter()
-                    .map(|(key, value)| format!("{key}{value}"))
-                    .fold(String::new(), |a, b| a + "&" + &b),
-            );
-        }
-        Ok(url)
-    } else {
-        Err(String::from("No dbname in keyvalue connection string"))
+    url.set_password(params.remove("password"))
+        .map_err(|_| String::new())?;
+
+    url.set_path(params.remove("dbname").unwrap_or_default());
+
+    for (key, value) in params {
+        url.query_pairs_mut().append_pair(key, value);
     }
+
+    Ok(url.into())
 }

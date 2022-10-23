@@ -7,8 +7,6 @@ use futures::stream::TryStreamExt;
 use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
-#[cfg(feature = "smartstring")]
-use smartstring::alias::String;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::prelude::*;
 #[cfg(feature = "sqlite")]
@@ -21,7 +19,16 @@ use std::path::Path;
 use url::Host;
 
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
-use crate::positions::{get_block_as_integer, get_integer_as_block, Position};
+use crate::positions::Position;
+
+const POSTGRES_QUERY: &str = "SELECT data FROM blocks
+ WHERE (posx = $1 AND posy = $2 AND posz = $3)";
+
+const SQLITE_UPSERT: &str = "INSERT INTO blocks VALUES (?, ?)
+ ON CONFLICT(pos) DO UPDATE SET data=excluded.data";
+
+const POSTGRES_UPSERT: &str = "INSERT INTO blocks VALUES($1, $2, $3, $4)
+ ON CONFLICT(posx,posy,posz) DO UPDATE SET data=excluded.data";
 
 /// An error in the underlying database or in the map block binary format
 #[derive(thiserror::Error, Debug)]
@@ -46,8 +53,25 @@ pub enum MapDataError {
     MapBlockError(#[from] MapBlockError),
 
     /// This mapblock does not exist
-    #[error("MapBlock {0} does not exist")]
-    MapBlockNonexistent(i64),
+    #[error("MapBlock {0:?} does not exist")]
+    MapBlockNonexistent(Position),
+
+    /// An IO related error
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+impl MapDataError {
+    /// Converts an SQL error to a mapblock error
+    ///
+    /// while converting `RowNotFound` to `MapBlockNonexistent(pos)`
+    fn from_sqlx_error(e: sqlx::Error, pos: Position) -> MapDataError {
+        if let sqlx::Error::RowNotFound = e {
+            MapDataError::MapBlockNonexistent(pos)
+        } else {
+            MapDataError::SqlError(e)
+        }
+    }
 }
 
 /// A handle to the world data
@@ -68,7 +92,7 @@ pub enum MapData {
         /// The connection to the Redis instance
         connection: RedisConn,
         /// The hash in which the world's data is stored in
-        hash: String,
+        hash: std::string::String,
     },
 
     /// This variant is a thread-safe open LevelDB
@@ -85,14 +109,17 @@ impl MapData {
     /// use async_std::task;
     ///
     /// let meta = task::block_on(async {
-    ///     MapData::from_sqlite_file("TestWorld/map.sqlite").await.unwrap();
+    ///     MapData::from_sqlite_file("TestWorld/map.sqlite", false).await.unwrap();
     /// });
     /// ```
-    pub async fn from_sqlite_file(filename: impl AsRef<Path>) -> Result<MapData, MapDataError> {
+    pub async fn from_sqlite_file(
+        filename: impl AsRef<Path>,
+        read_only: bool,
+    ) -> Result<MapData, MapDataError> {
         Ok(MapData::Sqlite(
             SqlitePool::connect_with(
                 SqliteConnectOptions::new()
-                    .immutable(true)
+                    .immutable(read_only)
                     .filename(filename),
             )
             .await?,
@@ -119,7 +146,7 @@ impl MapData {
             ))?
             .get_multiplexed_async_std_connection()
             .await?,
-            hash: String::from(hash),
+            hash: hash.to_string(),
         })
     }
 
@@ -139,23 +166,17 @@ impl MapData {
             #[cfg(feature = "sqlite")]
             MapData::Sqlite(pool) => {
                 let mut result = vec![];
-                let mut rows = sqlx::query("SELECT pos FROM blocks")
-                    .bind("pos")
-                    .fetch(pool);
+                let mut rows = sqlx::query("SELECT pos FROM blocks").fetch(pool);
                 while let Some(row) = rows.try_next().await? {
                     let pos_index = row.try_get("pos")?;
-                    result.push(get_integer_as_block(pos_index));
+                    result.push(Position::from_database_key(pos_index));
                 }
                 Ok(result)
             }
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => {
                 let mut result = vec![];
-                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks")
-                    .bind("x")
-                    .bind("y")
-                    .bind("z")
-                    .fetch(pool);
+                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks").fetch(pool);
                 while let Some(row) = rows.try_next().await? {
                     let x: i32 = row.try_get("posx")?;
                     let y: i32 = row.try_get("posy")?;
@@ -172,7 +193,7 @@ impl MapData {
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
                 let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.into_iter().map(get_integer_as_block).collect())
+                Ok(v.into_iter().map(Position::from_database_key).collect())
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) =>
@@ -198,27 +219,30 @@ impl MapData {
 
     /// Queries the backend for the data of a single mapblock
     pub async fn get_block_data(&self, pos: Position) -> Result<Vec<u8>, MapDataError> {
-        let pos_index = get_block_as_integer(pos);
+        let pos_index = pos.as_database_key();
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => Ok(sqlx::query("SELECT data FROM blocks WHERE pos = ?")
+            MapData::Sqlite(pool) => sqlx::query("SELECT data FROM blocks WHERE pos = ?")
                 .bind(pos_index)
                 .fetch_one(pool)
-                .await?
-                .try_get("data")?),
+                .await
+                .and_then(|row| row.try_get("data"))
+                .map_err(sqlx::Error::from)
+                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
-            MapData::Postgres(pool) => Ok(sqlx::query(
-                "SELECT data FROM blocks WHERE (posx = $1 AND posy = $2 AND posz = $3)",
-            )
-            .bind(pos.x)
-            .bind(pos.y)
-            .bind(pos.z)
-            .fetch_one(pool)
-            .await?
-            .try_get("data")?),
+            MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
+                .bind(pos.x)
+                .bind(pos.y)
+                .bind(pos.z)
+                .fetch_one(pool)
+                .await
+                .and_then(|row| row.try_get("data"))
+                .map_err(sqlx::Error::from)
+                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                Ok(connection.clone().hget(hash.to_string(), pos_index).await?)
+                let value: Option<_> = connection.clone().hget(hash.to_string(), pos_index).await?;
+                value.ok_or(MapDataError::MapBlockNonexistent(pos))
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) => Ok(db
@@ -237,6 +261,41 @@ impl MapData {
         Ok(MapBlock::from_data(
             self.get_block_data(pos).await?.as_slice(),
         )?)
+    }
+
+    /// Sets the backend's mapblock data for position `pos` to `data`
+    pub async fn set_mapblock_data(&self, pos: Position, data: &[u8]) -> Result<(), MapDataError> {
+        match self {
+            #[cfg(feature = "sqlite")]
+            MapData::Sqlite(pool) => sqlx::query(SQLITE_UPSERT)
+                .bind(pos.as_database_key())
+                .bind(data)
+                .execute(pool)
+                .await
+                .map(|_| {})
+                .map_err(MapDataError::SqlError),
+            #[cfg(feature = "postgres")]
+            MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
+                .bind(pos.x)
+                .bind(pos.y)
+                .bind(pos.z)
+                .bind(data)
+                .execute(pool)
+                .await
+                .map(|_| {})
+                .map_err(MapDataError::SqlError),
+            #[cfg(feature = "redis")]
+            MapData::Redis { connection, hash } => connection
+                .clone()
+                .hset(hash, pos.as_database_key(), data)
+                .await
+                .map_err(|e| e.into()),
+        }
+    }
+
+    /// Inserts or replaces the map block at `pos`
+    pub async fn set_mapblock(&self, pos: Position, block: &MapBlock) -> Result<(), MapDataError> {
+        self.set_mapblock_data(pos, &block.to_binary()?).await
     }
 
     /// Enumerate all nodes from the mapblock at `pos`
