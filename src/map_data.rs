@@ -5,6 +5,7 @@ use futures::stream;
 use futures::stream::BoxStream;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use futures::stream::StreamExt;
+use futures::TryStreamExt;
 #[cfg(feature = "experimental-leveldb")]
 use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
@@ -166,29 +167,14 @@ impl MapData {
     pub async fn all_mapblock_positions(&self) -> BoxStream<Result<Position, MapDataError>> {
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => sqlx::query("SELECT pos FROM blocks")
+            MapData::Sqlite(pool) => sqlx::query_as("SELECT pos FROM blocks")
                 .fetch(pool)
-                .map(|row_result| {
-                    row_result
-                        .and_then(|row| row.try_get("pos"))
-                        .map(Position::from_database_key)
-                        .map_err(MapDataError::SqlError)
-                })
+                .map_err(MapDataError::SqlError)
                 .boxed(),
             #[cfg(feature = "postgres")]
-            MapData::Postgres(pool) => sqlx::query("SELECT posx, posy, posz FROM blocks")
+            MapData::Postgres(pool) => sqlx::query_as("SELECT posx, posy, posz FROM blocks")
                 .fetch(pool)
-                .map(|row_result| {
-                    row_result
-                        .and_then(|row| {
-                            Ok(Position {
-                                x: row.try_get("posx")?,
-                                y: row.try_get("posy")?,
-                                z: row.try_get("posz")?,
-                            })
-                        })
-                        .map_err(MapDataError::SqlError)
-                })
+                .map_err(MapDataError::SqlError)
                 .boxed(),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {

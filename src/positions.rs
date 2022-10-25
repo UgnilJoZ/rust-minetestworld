@@ -2,6 +2,8 @@
 
 use crate::MAPBLOCK_LENGTH;
 use num_integer::div_floor;
+use sqlx::Row;
+use sqlx::{postgres::PgRow, sqlite::SqliteRow, FromRow};
 use std::ops::{Add, Rem};
 
 /// Coordinates in the world
@@ -53,6 +55,22 @@ impl std::ops::Mul<i16> for Position {
             y: self.y * rhs,
             z: self.z * rhs,
         }
+    }
+}
+
+impl FromRow<'_, SqliteRow> for Position {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Position::from_database_key(row.try_get("pos")?))
+    }
+}
+
+impl FromRow<'_, PgRow> for Position {
+    fn from_row(row: &PgRow) -> sqlx::Result<Self> {
+        Ok(Position {
+            x: row.try_get("posx")?,
+            y: row.try_get("posy")?,
+            z: row.try_get("posz")?,
+        })
     }
 }
 
