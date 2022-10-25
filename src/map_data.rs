@@ -1,8 +1,10 @@
 //! Contains a type to read a world's map data
 #[cfg(feature = "experimental-leveldb")]
 use async_std::sync::{Arc, Mutex};
+use futures::stream;
+use futures::stream::BoxStream;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-use futures::stream::TryStreamExt;
+use futures::stream::StreamExt;
 #[cfg(feature = "experimental-leveldb")]
 use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
@@ -161,39 +163,47 @@ impl MapData {
     ///
     /// Note that the unit of the coordinates will be
     /// [MAPBLOCK_LENGTH][`crate::map_block::MAPBLOCK_LENGTH`].
-    pub async fn all_mapblock_positions(&self) -> Result<Vec<Position>, MapDataError> {
+    pub async fn all_mapblock_positions(&self) -> BoxStream<Result<Position, MapDataError>> {
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => {
-                let mut result = vec![];
-                let mut rows = sqlx::query("SELECT pos FROM blocks").fetch(pool);
-                while let Some(row) = rows.try_next().await? {
-                    let pos_index = row.try_get("pos")?;
-                    result.push(Position::from_database_key(pos_index));
-                }
-                Ok(result)
-            }
+            MapData::Sqlite(pool) => sqlx::query("SELECT pos FROM blocks")
+                .fetch(pool)
+                .map(|row_result| {
+                    row_result
+                        .and_then(|row| row.try_get("pos"))
+                        .map(Position::from_database_key)
+                        .map_err(MapDataError::SqlError)
+                })
+                .boxed(),
             #[cfg(feature = "postgres")]
-            MapData::Postgres(pool) => {
-                let mut result = vec![];
-                let mut rows = sqlx::query("SELECT posx, posy, posz FROM blocks").fetch(pool);
-                while let Some(row) = rows.try_next().await? {
-                    let x: i32 = row.try_get("posx")?;
-                    let y: i32 = row.try_get("posy")?;
-                    let z: i32 = row.try_get("posz")?;
-                    let pos = Position {
-                        x: x as i16,
-                        y: y as i16,
-                        z: z as i16,
-                    };
-                    result.push(pos);
-                }
-                Ok(result)
-            }
+            MapData::Postgres(pool) => sqlx::query("SELECT posx, posy, posz FROM blocks")
+                .fetch(pool)
+                .map(|row_result| {
+                    row_result
+                        .and_then(|row| {
+                            Ok(Position {
+                                x: row.try_get("posx")?,
+                                y: row.try_get("posy")?,
+                                z: row.try_get("posz")?,
+                            })
+                        })
+                        .map_err(MapDataError::SqlError)
+                })
+                .boxed(),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
-                let v: Vec<i64> = connection.clone().hkeys(hash.to_string()).await?;
-                Ok(v.into_iter().map(Position::from_database_key).collect())
+                let positions: Result<Vec<i64>, _> =
+                    connection.clone().hkeys(hash.to_string()).await;
+                match positions {
+                    Ok(positions) => stream::iter(
+                        positions
+                            .into_iter()
+                            .map(Position::from_database_key)
+                            .map(Ok),
+                    )
+                    .boxed(),
+                    Err(e) => stream::iter(vec![Err(MapDataError::RedisError(e))]).boxed(),
+                }
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) =>

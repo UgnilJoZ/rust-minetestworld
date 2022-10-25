@@ -4,6 +4,7 @@ use crate::MapBlock;
 use crate::MapData;
 use crate::MapDataError;
 use crate::World;
+use futures::prelude::*;
 
 #[test]
 fn simple_math() {
@@ -29,7 +30,7 @@ async fn can_query() {
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
-    assert_eq!(mapdata.all_mapblock_positions().await.unwrap().len(), 5923);
+    assert_eq!(mapdata.all_mapblock_positions().await.count().await, 5923);
     let block = mapdata
         .get_block_data(Position {
             x: -13,
@@ -65,7 +66,12 @@ async fn can_parse_all_mapblocks() {
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
-    let positions: Vec<_> = mapdata.all_mapblock_positions().await.unwrap();
+    let positions: Vec<_> = mapdata
+        .all_mapblock_positions()
+        .await
+        .try_collect()
+        .await
+        .unwrap();
     let blocks: Vec<_> = futures::future::join_all(
         positions
             .iter()
