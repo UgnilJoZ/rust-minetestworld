@@ -4,6 +4,7 @@ use crate::MapData;
 use crate::MapDataError;
 use crate::VoxelManip;
 use async_std::fs::File;
+use async_std::fs;
 use async_std::io::BufReader;
 use async_std::prelude::*;
 use std::collections::HashMap;
@@ -27,6 +28,19 @@ impl World {
     /// No further checks are done, e.g. for existence of essential files.
     pub fn open(path: impl AsRef<Path>) -> Self {
         World(path.as_ref().to_path_buf())
+    }
+
+    /// Create a new world from scratch at the given location
+    ///
+    /// The world will use sqlite as backend.
+    pub async fn create_sqlite(path: impl AsRef<Path>) -> Result<World, WorldError> {
+        let path = path.as_ref();
+        fs::DirBuilder::new()
+            .create(path)
+            .await?;
+        fs::write(path.join("world.mt"), "enable_damage = true\ncreative_mode = false\nmod_storage_backend = sqlite3\nauth_backend = sqlite3\nplayer_backend = sqlite3\nbackend = sqlite3\ngameid = minetest\nworld_name = Neue Welt\nserver_announce = false")
+            .await?;
+        Ok(World::open(path))
     }
 
     /// Reads the basic metadata of the world.
