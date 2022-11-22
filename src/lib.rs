@@ -57,7 +57,7 @@ pub use map_data::MapDataError;
 pub use positions::Position;
 pub use voxel_manip::VoxelManip;
 pub use world::World;
-pub use world::WorldError;
+pub use world::WorldError as Error;
 
 pub use map_block::MAPBLOCK_LENGTH;
 pub use map_block::MAPBLOCK_SIZE;
