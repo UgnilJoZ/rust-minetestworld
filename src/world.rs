@@ -17,7 +17,7 @@ use url::Url;
 /// ```
 /// use minetestworld::World;
 ///
-/// let world = World::new("TestWorld");
+/// let world = World::open("TestWorld");
 /// ```
 pub struct World(pub PathBuf);
 
@@ -25,7 +25,7 @@ impl World {
     /// Creates a new world object from a directory path.
     ///
     /// No further checks are done, e.g. for existence of essential files.
-    pub fn new(path: impl AsRef<Path>) -> Self {
+    pub fn open(path: impl AsRef<Path>) -> Self {
         World(path.as_ref().to_path_buf())
     }
 
