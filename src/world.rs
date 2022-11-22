@@ -33,6 +33,7 @@ impl World {
     /// Create a new world from scratch at the given location
     ///
     /// The world will use sqlite as backend.
+    #[cfg(feature = "sqlite")]
     pub async fn create_sqlite(path: impl AsRef<Path>) -> Result<World, WorldError> {
         let path = path.as_ref();
         fs::DirBuilder::new()
