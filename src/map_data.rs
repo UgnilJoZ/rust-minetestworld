@@ -4,7 +4,6 @@ use async_std::sync::{Arc, Mutex};
 use futures::future;
 use futures::stream;
 use futures::stream::BoxStream;
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use futures::stream::StreamExt;
 use futures::TryStreamExt;
 #[cfg(feature = "experimental-leveldb")]
@@ -69,6 +68,7 @@ impl MapDataError {
     /// Converts an SQL error to a mapblock error
     ///
     /// while converting `RowNotFound` to `MapBlockNonexistent(pos)`
+    #[cfg(any(feature = "sqlite", feature = "postgres"))]
     fn from_sqlx_error(e: sqlx::Error, pos: Position) -> MapDataError {
         if let sqlx::Error::RowNotFound = e {
             MapDataError::MapBlockNonexistent(pos)
