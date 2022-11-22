@@ -303,7 +303,7 @@ impl MapData {
 
     /// Enumerate all nodes from the mapblock at `pos`
     ///
-    /// Returns all nodes along with their relative position within the map block
+    /// Yields all nodes along with their relative position within the map block
     pub async fn iter_mapblock_nodes(
         &self,
         mapblock_pos: Position,

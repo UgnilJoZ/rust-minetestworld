@@ -342,7 +342,7 @@ impl MapBlock {
             }
         }
         panic!("Did not find a fresh content ID in whole u16 range")
-        // Instead of panicking, one could also search for an unused content ID
+        // Instead of panicking, one could also free an unused content ID
     }
 
     /// Return the content ID associated with this content name
