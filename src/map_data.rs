@@ -1,6 +1,7 @@
 //! Contains a type to read a world's map data
 #[cfg(feature = "experimental-leveldb")]
 use async_std::sync::{Arc, Mutex};
+use futures::future;
 use futures::stream;
 use futures::stream::BoxStream;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -119,14 +120,19 @@ impl MapData {
         filename: impl AsRef<Path>,
         read_only: bool,
     ) -> Result<MapData, MapDataError> {
-        Ok(MapData::Sqlite(
-            SqlitePool::connect_with(
-                SqliteConnectOptions::new()
-                    .immutable(read_only)
-                    .filename(filename),
-            )
-            .await?,
-        ))
+        match SqlitePool::connect_with(
+            SqliteConnectOptions::new()
+                .immutable(read_only)
+                .filename(filename)
+                .create_if_missing(!read_only)
+            ).await
+        {
+            Ok(pool) => {
+                sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
+                Ok(MapData::Sqlite(pool))
+            }
+            Err(e) => Err(MapDataError::SqlError(e))
+        }
     }
 
     #[cfg(feature = "postgres")]
