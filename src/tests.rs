@@ -109,7 +109,7 @@ async fn iter_node_positions() {
         z: 2,
     };
 
-    let world = World::new("TestWorld");
+    let world = World::open("TestWorld");
     let mapdata = world.get_map_data().await.unwrap();
     for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
         println!("{pos:?}, {node:?}");

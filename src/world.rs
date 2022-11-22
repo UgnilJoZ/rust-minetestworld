@@ -51,7 +51,7 @@ impl World {
     /// use async_std::task;
     ///
     /// let meta = task::block_on(async {
-    ///     World::new("TestWorld").get_world_metadata().await
+    ///     World::open("TestWorld").get_world_metadata().await
     /// }).unwrap();
     /// assert_eq!(meta.get("world_name").unwrap(), "Hallo");
     /// assert_eq!(meta.get("backend").unwrap(), "sqlite3");
@@ -101,7 +101,7 @@ impl World {
     /// use async_std::task;
     ///
     /// let map_data = task::block_on(async {
-    ///     World::new("TestWorld").get_map_data().await.unwrap()
+    ///     World::open("TestWorld").get_map_data().await.unwrap()
     /// });
     /// ```
     pub async fn get_map_data_backend(&self, read_only: bool) -> Result<MapData, WorldError> {
@@ -163,7 +163,7 @@ impl World {
     /// use async_std::task;
     ///
     /// let map_data = task::block_on(async {
-    ///     World::new("TestWorld").get_map_data().await.unwrap()
+    ///     World::open("TestWorld").get_map_data().await.unwrap()
     /// });
     /// ```
     pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
@@ -179,7 +179,7 @@ impl World {
     /// use async_std::task;
     ///
     /// let map_data = task::block_on(async {
-    ///     World::new("TestWorld").get_mutable_map_data().await.unwrap()
+    ///     World::open("TestWorld").get_mutable_map_data().await.unwrap()
     /// });
     /// ```
     pub async fn get_mutable_map_data(&self) -> Result<MapData, WorldError> {

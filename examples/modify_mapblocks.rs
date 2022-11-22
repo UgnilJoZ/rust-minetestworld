@@ -3,7 +3,7 @@ use minetestworld::{Position, World};
 
 #[async_std::main]
 async fn main() {
-    let world = World::new("TestWorld");
+    let world = World::open("TestWorld");
     let data = world.get_map_data_backend(false).await.unwrap();
     // Collect the positions beforehand, because sqlite
     // does not tolerate concurrent read and write access

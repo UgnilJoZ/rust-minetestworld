@@ -3,7 +3,7 @@ mod common;
 use minetestworld::{Position, World};
 
 async fn change_voxel() -> Result<(), minetestworld::world::WorldError> {
-    let world = World::new("TestWorld copy");
+    let world = World::open("TestWorld copy");
     let mut vm = world.get_voxel_manip(true).await?;
     vm.set_content(Position::new(0i16, 0, 0), b"default:diamond")
         .await?;

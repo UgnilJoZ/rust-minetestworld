@@ -5,7 +5,7 @@ use minetestworld::World;
 
 /// Reading and writing a block should be more-or-less a no-op
 async fn nop() -> Result<(), Box<dyn Error>> {
-    let world = World::new("TestWorld copy");
+    let world = World::open("TestWorld copy");
     let data = world.get_map_data_backend(false).await?;
     let positions: Vec<_> = data.all_mapblock_positions().await.try_collect().await?;
     for pos in positions {
