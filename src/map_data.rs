@@ -194,14 +194,14 @@ impl MapData {
                             .map(Ok),
                     )
                     .boxed(),
-                    Err(e) => stream::iter(vec![Err(MapDataError::RedisError(e))]).boxed(),
+                    Err(e) => stream::once(future::ready(Err(MapDataError::RedisError(e)))).boxed(),
                 }
             }
             #[cfg(feature = "experimental-leveldb")]
             MapData::LevelDb(db) =>
             // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
             {
-                Ok(db
+                stream::iter(db
                     .lock()
                     .await
                     .iter()
@@ -214,7 +214,8 @@ impl MapData {
                     .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
                     .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
                     .map(get_integer_as_block)
-                    .collect())
+                )
+                .boxed()
             }
         }
     }
