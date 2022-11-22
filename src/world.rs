@@ -20,7 +20,7 @@ use url::Url;
 ///
 /// let world = World::open("TestWorld");
 /// ```
-pub struct World(pub PathBuf);
+pub struct World(PathBuf);
 
 impl World {
     /// Creates a new world object from a directory path.
