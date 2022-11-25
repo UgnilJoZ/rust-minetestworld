@@ -2,12 +2,12 @@
 
 use crate::MAPBLOCK_LENGTH;
 use num_integer::div_floor;
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-use sqlx::{Row, FromRow};
 #[cfg(any(feature = "postgres"))]
 use sqlx::postgres::PgRow;
 #[cfg(any(feature = "sqlite"))]
 use sqlx::sqlite::SqliteRow;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+use sqlx::{FromRow, Row};
 use std::ops::{Add, Rem};
 
 /// Coordinates in the world
@@ -68,7 +68,6 @@ impl FromRow<'_, SqliteRow> for Position {
         Ok(Position::from_database_key(row.try_get("pos")?))
     }
 }
-
 
 #[cfg(feature = "postgres")]
 impl FromRow<'_, PgRow> for Position {

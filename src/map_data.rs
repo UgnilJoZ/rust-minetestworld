@@ -124,14 +124,15 @@ impl MapData {
             SqliteConnectOptions::new()
                 .immutable(read_only)
                 .filename(filename)
-                .create_if_missing(!read_only)
-            ).await
+                .create_if_missing(!read_only),
+        )
+        .await
         {
             Ok(pool) => {
                 sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
                 Ok(MapData::Sqlite(pool))
             }
-            Err(e) => Err(MapDataError::SqlError(e))
+            Err(e) => Err(MapDataError::SqlError(e)),
         }
     }
 
@@ -201,19 +202,19 @@ impl MapData {
             MapData::LevelDb(db) =>
             // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
             {
-                stream::iter(db
-                    .lock()
-                    .await
-                    .iter()
-                    .map_err(MapDataError::LevelDbError)?
-                    .alloc()
-                    //.inspect(|(key, _value)| println!("{key:?}"))
-                    // Now here it gets interesting. Figure out why the key's length is often 9 bytes instead of 8 bytes.
-                    .filter(|(key, _)| key.len() == 8)
-                    // And figure out why LevelDB reports corrupted blocks
-                    .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
-                    .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
-                    .map(get_integer_as_block)
+                stream::iter(
+                    db.lock()
+                        .await
+                        .iter()
+                        .map_err(MapDataError::LevelDbError)?
+                        .alloc()
+                        //.inspect(|(key, _value)| println!("{key:?}"))
+                        // Now here it gets interesting. Figure out why the key's length is often 9 bytes instead of 8 bytes.
+                        .filter(|(key, _)| key.len() == 8)
+                        // And figure out why LevelDB reports corrupted blocks
+                        .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
+                        .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
+                        .map(get_integer_as_block),
                 )
                 .boxed()
             }

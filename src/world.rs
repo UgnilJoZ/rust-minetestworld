@@ -3,8 +3,8 @@
 use crate::MapData;
 use crate::MapDataError;
 use crate::VoxelManip;
-use async_std::fs::File;
 use async_std::fs;
+use async_std::fs::File;
 use async_std::io::BufReader;
 use async_std::prelude::*;
 use std::collections::HashMap;
@@ -36,9 +36,7 @@ impl World {
     #[cfg(feature = "sqlite")]
     pub async fn create_sqlite(path: impl AsRef<Path>) -> Result<World, WorldError> {
         let path = path.as_ref();
-        fs::DirBuilder::new()
-            .create(path)
-            .await?;
+        fs::DirBuilder::new().create(path).await?;
         fs::write(path.join("world.mt"), "enable_damage = true\ncreative_mode = false\nmod_storage_backend = sqlite3\nauth_backend = sqlite3\nplayer_backend = sqlite3\nbackend = sqlite3\ngameid = minetest\nworld_name = Neue Welt\nserver_announce = false")
             .await?;
         Ok(World::open(path))
