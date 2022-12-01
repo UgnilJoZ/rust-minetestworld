@@ -82,10 +82,10 @@ fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
 }
 
 /// A single voxel
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node {
     /// Content type
-    pub param0: String,
+    pub param0: Vec<u8>,
     /// Lighting
     pub param1: u8,
     /// Additional data
@@ -314,7 +314,7 @@ impl MapBlock {
         let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
         let param0 = self.content_from_id(self.param0[index]);
         Node {
-            param0: std::string::String::from_utf8_lossy(param0).into(),
+            param0: param0.to_vec(),
             param1: self.param1[index],
             param2: self.param2[index],
         }
@@ -615,7 +615,7 @@ pub struct NodeIter {
 }
 
 impl NodeIter {
-    pub(crate) fn new(mapblock: MapBlock, mapblock_position: Position) -> Self {
+    pub(crate) fn from(mapblock: MapBlock, mapblock_position: Position) -> Self {
         NodeIter {
             mapblock,
             mapblock_position,
@@ -640,7 +640,7 @@ impl Iterator for NodeIter {
                 .mapblock
                 .content_from_id(self.mapblock.param0[index as usize]);
             let node = Node {
-                param0: std::string::String::from_utf8_lossy(param0).into(),
+                param0: param0.to_vec(),
                 param1: self.mapblock.param1[index as usize],
                 param2: self.mapblock.param2[index as usize],
             };

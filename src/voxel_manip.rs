@@ -78,7 +78,7 @@ impl VoxelManip {
     pub async fn set_node(&mut self, node_pos: Position, node: Node) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
-            let content_id = mapblock.get_or_create_content_id(node.param0.as_bytes());
+            let content_id = mapblock.get_or_create_content_id(&node.param0);
             mapblock.set_content(nodepos, content_id);
             mapblock.set_param1(nodepos, node.param1);
             mapblock.set_param2(nodepos, node.param2);

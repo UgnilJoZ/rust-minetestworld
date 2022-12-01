@@ -12,7 +12,7 @@ async fn change_voxel() -> Result<(), minetestworld::world::WorldError> {
 
     let mut vm = world.get_voxel_manip(true).await?;
     let node = vm.get_node(Position::new(0i16, 0, 0)).await?;
-    assert_eq!(node.param0, "default:diamond");
+    assert_eq!(node.param0, b"default:diamond");
     Ok(())
 }
 

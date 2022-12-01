@@ -309,8 +309,7 @@ impl MapData {
         &self,
         mapblock_pos: Position,
     ) -> Result<impl Iterator<Item = (Position, Node)>, MapDataError> {
-        let data = self.get_block_data(mapblock_pos).await?;
-        let mapblock = MapBlock::from_data(data.as_slice())?;
-        Ok(NodeIter::new(mapblock, mapblock_pos))
+        let mapblock = self.get_mapblock(mapblock_pos).await?;
+        Ok(NodeIter::from(mapblock, mapblock_pos))
     }
 }
