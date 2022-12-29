@@ -95,7 +95,7 @@ pub enum MapData {
     Redis {
         /// The connection to the Redis instance
         connection: RedisConn,
-        /// The hash in which the world's data is stored in
+        /// The Hash in which the world's data is stored in
         hash: std::string::String,
     },
 
@@ -107,6 +107,8 @@ pub enum MapData {
 impl MapData {
     #[cfg(feature = "sqlite")]
     /// Connects to the "map.sqlite" database.
+    ///
+    /// If the `blocks` table does not exist, tries to create it.
     ///
     /// ```
     /// use minetestworld::MapData;
@@ -185,6 +187,7 @@ impl MapData {
                 .boxed(),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
+                // We can't really stream, so we'll just collect the result with hkeys
                 let positions: Result<Vec<i64>, _> =
                     connection.clone().hkeys(hash.to_string()).await;
                 match positions {
@@ -260,7 +263,8 @@ impl MapData {
 
     /// Queries the backend for a specific map block
     ///
-    /// `pos` is a map block position.
+    /// `pos` is a map block position; this means that every dimension is divided
+    /// by the side length of a map block.
     pub async fn get_mapblock(&self, pos: Position) -> Result<MapBlock, MapDataError> {
         Ok(MapBlock::from_data(
             self.get_block_data(pos).await?.as_slice(),

@@ -1,5 +1,5 @@
-//! This crate lets you read all chunks of a minetest world,
-//! as long as they are already saved in map format version 29.
+//! This crate lets you read the world data of a minetest world,
+//! as long as the mapblocks are already saved in map format version 29.
 //!
 //! ## Terminology
 //! ### Node
@@ -11,10 +11,11 @@
 //! This term might originate in the Irrlicht engine.
 //!
 //! ### MapBlock
-//! The world data is divided into chunks that are called [map blocks](`MapBlock`).
-//! A map block contains 16·16·16 nodes as well as objects and metadata.
+//! When saved in a backend, the world data is divided into chunks that are called
+//! [map blocks](`MapBlock`). A map block contains 16·16·16 nodes as well as objects and metadata.
 //!
-//! It is addressed by a [`Position`] that is divided by [`MAPBLOCK_LENGTH`] in each component.
+//! A mapblock is addressed by a [`Position`] where every dimension
+//! is divided by [`MAPBLOCK_LENGTH`].
 //!
 //! ## Example usage
 //!
@@ -37,8 +38,12 @@
 //!     }
 //! });
 //! ```
+//!
+//! [Another notable example](https://docs.rs/crate/minetestworld/latest/source/examples/modify_map.rs)
+//! uses a [`VoxelManip`] to modify the world.
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 extern crate async_std;
 #[cfg(feature = "smartstring")]

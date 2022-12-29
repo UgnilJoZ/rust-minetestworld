@@ -17,7 +17,7 @@ url = { version = "2.2", optional = true }
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
 zstd = "0.11"
-num-integer = "0.1" # Needed for div_floor
+num-integer = "0.1" # Needed for div_floor until https://github.com/rust-lang/rust/issues/88581 is stabilized
 
 [target.'cfg(not(all(target_endian = "big", target_pointer_width = "32")))'.dependencies]
 smartstring = {version = "1", optional = true}

@@ -11,13 +11,15 @@ struct CacheEntry {
     tainted: bool,
 }
 
-/// In-memory world data cache that does not stick to the mapblock abstraction
+/// In-memory world data cache that allows easy handling of single nodes.
 ///
-/// It allows fast reading from and writing to the world. In the latter case,
-/// all changes made have to be committed to the world after
-/// writing via [`VoxelManip::commit`].
+/// It is an abstraction on top of the MapBlocks the world data consists of.
+/// It allows fast reading from and writing to the world.
 ///
-/// ⚠️ Believe me, you want to do a world backup before modifying the map data.
+/// All changes to the world have to be committed via [`VoxelManip::commit`].
+/// Before this, they are only present in VoxelManip's local cache and lost after drop.
+///
+/// ⚠️ You want to do a world backup before modifying the map data.
 pub struct VoxelManip {
     map: MapData,
     mapblock_cache: HashMap<Position, CacheEntry>,
@@ -51,12 +53,12 @@ impl VoxelManip {
         }
     }
 
-    /// Get a reference to the mapblock at this block position
+    /// Get a reference to the mapblock at the given block position
     pub async fn get_mapblock(&mut self, mapblock_pos: Position) -> Result<&MapBlock> {
         Ok(&self.get_entry(mapblock_pos).await?.mapblock)
     }
 
-    /// Get the node at this world position
+    /// Get the node at the given world position
     pub async fn get_node(&mut self, node_pos: Position) -> Result<Node> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         Ok(self.get_mapblock(blockpos).await?.get_node_at(nodepos))
@@ -74,7 +76,10 @@ impl VoxelManip {
         Ok(())
     }
 
-    /// Set a voxel in the VoxelManip's cache
+    /// Set a voxel in VoxelManip's cache
+    ///
+    /// ⚠️ The change will be present locally only. To modify the map,
+    /// the change has to be written back via [`VoxelManip::commit`].
     pub async fn set_node(&mut self, node_pos: Position, node: Node) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
@@ -88,9 +93,16 @@ impl VoxelManip {
 
     /// Sets the content string at this world position
     ///
+    /// `content` has to be the unique [itemstring](https://wiki.minetest.net/Itemstrings).
+    /// The use of aliases is not possible, because it would require a Lua runtime
+    /// loading all mods.
+    ///
     /// ```ignore
     /// vm.set_content(Position::new(8,9,10), b"default:stone").await?;
     /// ```
+    ///
+    /// ⚠️ Until the change is [commited](`VoxelManip::commit`),
+    /// the node will only be changed in the cache.
     pub async fn set_content(&mut self, node_pos: Position, content: &[u8]) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
@@ -101,6 +113,9 @@ impl VoxelManip {
     }
 
     /// Sets the lighting parameter at this world position
+    ///
+    /// ⚠️ Until the change is [commited](`VoxelManip::commit`),
+    /// the node will only be changed in the cache.
     pub async fn set_param1(&mut self, node_pos: Position, param1: u8) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
@@ -110,6 +125,9 @@ impl VoxelManip {
     }
 
     /// Sets the param2 of the node at this world position
+    ///
+    /// ⚠️ Until the change is [commited](`VoxelManip::commit`),
+    /// the node will only be changed in the cache.
     pub async fn set_param2(&mut self, node_pos: Position, param2: u8) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
@@ -131,7 +149,11 @@ impl VoxelManip {
         Ok(())
     }
 
-    /// Apply changes made to the map
+    /// Apply all changes made to the map
+    ///
+    /// Without this, all changes made with [`VoxelManip::set_node`], [`VoxelManip::set_content`],
+    /// [`VoxelManip::set_param1`], and [`VoxelManip::set_param2`] are lost when this
+    /// instance is dropped.
     pub async fn commit(&mut self) -> Result<()> {
         // Write modified mapblocks back into the map data
         for (&pos, cache_entry) in self.mapblock_cache.iter_mut() {

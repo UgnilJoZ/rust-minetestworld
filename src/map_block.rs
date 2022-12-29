@@ -81,14 +81,26 @@ fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
     Ok(params)
 }
 
-/// A single voxel
+/// The physical composition of the world at a specific voxel
+///
+/// Nodes are the voxel-shaped 1 m³ blocks that the world consists of.
 #[derive(Debug, Clone)]
 pub struct Node {
-    /// Content type
+    /// Content type string
+    ///
+    /// This is the [item string](https://wiki.minetest.net/Itemstrings) of this node's content.
+    /// It identifies the "material" that this voxel consists of.
+    ///
+    /// ### Example values:
+    /// * [`vec![b"default:stone"]`](https://wiki.minetest.net/Stone)
+    /// * [`vec![b"air"]`](https://wiki.minetest.net/Air)
+    /// * [`vec![b"ignore"]`](https://wiki.minetest.net/Ignore)
     pub param0: Vec<u8>,
-    /// Lighting
+    /// Lighting data
     pub param1: u8,
     /// Additional data
+    ///
+    /// The usage depends on the content type.
     pub param2: u8,
 }
 
@@ -119,20 +131,23 @@ pub enum MapBlockError {
 /// Maps mapblock-local content IDs to content types
 pub type NameIdMappings = HashMap<u16, Vec<u8>>;
 
-/// A single node variable, consisting of a key and a value
+/// A single node metadata variable, consisting of a key and a value
 #[derive(Debug)]
 pub struct NodeVar {
+    /// The 'name' of this variable
     key: Vec<u8>,
+    /// The value for this variable
     value: Vec<u8>,
+    /// Whether this is a private variable
     is_private: bool,
 }
 
 /// Metadata of a node
 ///
-/// e.g. the inventory of a chest or the text of a sign
+/// In game, this is used for e.g. the inventory of a chest or the text of a sign
 #[derive(Debug)]
 pub struct NodeMetadata {
-    /// The node index in the flat node array
+    /// The mapblock-relative node position of this item
     pub position: Position,
     /// Metadata variables
     pub vars: Vec<NodeVar>,
@@ -158,7 +173,7 @@ pub struct StaticObject {
 
 /// Represents a running node timer
 pub struct NodeTimer {
-    /// The node index in the flat node array
+    /// The mapblock-relative node position of this timer
     pub position: Position,
     /// Timeout in milliseconds
     pub timeout: i32,
@@ -166,7 +181,7 @@ pub struct NodeTimer {
     pub elapsed: i32,
 }
 
-/// A 'chunk' of nodes and the smallest unit saved in a backend
+/// A 'chunk' of voxels; the data unit saved in a backend
 ///
 /// Refer to <https://github.com/minetest/minetest/blob/master/doc/world_format.txt>
 pub struct MapBlock {
@@ -255,7 +270,7 @@ impl MapBlock {
         Ok(mapblock)
     }
 
-    /// Serializes the map block into the binay format
+    /// Serializes the map block into the binary format
     pub fn to_binary(&self) -> std::io::Result<Vec<u8>> {
         let mut encoder = zstd::stream::Encoder::new(vec![29], 0)?;
 
@@ -280,7 +295,7 @@ impl MapBlock {
         encoder.finish()
     }
 
-    /// Creates an unloaded map block that only contains [`CONTENT_IGNORE`]
+    /// Creates a not-yet-generated map block that only contains [`CONTENT_IGNORE`]
     pub fn unloaded() -> Self {
         MapBlock {
             map_format_version: 29,
@@ -353,7 +368,7 @@ impl MapBlock {
             .unwrap_or_else(|| self.add_content(content.to_vec()))
     }
 
-    /// Sets the content string of this node
+    /// Sets the content type of this node
     pub fn set_content(&mut self, relative_node_pos: Position, content_id: u16) {
         let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
         self.param0[index] = content_id
@@ -386,7 +401,7 @@ impl MapBlock {
     }
 }
 
-// Helper functions to read smaller chunks of binary data
+// Helper functions to read and write smaller chunks of binary data
 
 fn read_name_id_mappings(data: &mut impl Read) -> Result<NameIdMappings, MapBlockError> {
     if read_u8(data)? != 0 {
@@ -625,9 +640,7 @@ impl NodeIter {
 }
 
 impl Iterator for NodeIter {
-    /// The type this iterator yields.
-    ///
-    /// This is a tuple consisting of the node and its position in the world.
+    /// A tuple consisting of the node and its position in the world.
     type Item = (Position, Node);
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -1,4 +1,4 @@
-//! Contains functions and datatypes to work with world coordinates
+//! Functions and datatypes to work with world coordinates
 
 use crate::MAPBLOCK_LENGTH;
 use num_integer::div_floor;
@@ -10,12 +10,14 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Row};
 use std::ops::{Add, Rem};
 
-/// Coordinates in the world
+/// A point location within the world
 ///
-/// This type is used for addressing either nodes or map blocks.
+/// This type is used for addressing one of the following:
+/// * voxels ([nodes](`crate::Node`), node timers, metadata, ...).
+/// * [MapBlocks](`crate::MapBlock`). In this case, all three dimensions are divided by the
+/// MapBlock [side length](`crate::MAPBLOCK_LENGTH`).
 ///
-/// In the latter case, the components are divided by the
-/// [chunk length](`crate::MAPBLOCK_LENGTH`).
+/// A voxel position may either be absolute or relative to a mapblock root.
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
 pub struct Position {
     /// "East direction". The direction in which the sun rises.
@@ -116,7 +118,9 @@ impl Position {
         Position { x, y, z }
     }
 
-    /// Convert a map block position into a database index, used as primary key
+    /// Convert a map block position to an integer
+    ///
+    /// This integer is used as primary key in the sqlite and redis backends.
     pub(crate) fn as_database_key(&self) -> i64 {
         self.x as i64 + self.y as i64 * 4096 + self.z as i64 * 16777216
     }
