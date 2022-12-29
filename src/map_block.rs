@@ -135,11 +135,11 @@ pub type NameIdMappings = HashMap<u16, Vec<u8>>;
 #[derive(Debug)]
 pub struct NodeVar {
     /// The 'name' of this variable
-    key: Vec<u8>,
+    pub key: Vec<u8>,
     /// The value for this variable
-    value: Vec<u8>,
+    pub value: Vec<u8>,
     /// Whether this is a private variable
-    is_private: bool,
+    pub is_private: bool,
 }
 
 /// Metadata of a node
