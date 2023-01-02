@@ -234,7 +234,6 @@ impl MapData {
                 .fetch_one(pool)
                 .await
                 .and_then(|row| row.try_get("data"))
-                .map_err(sqlx::Error::from)
                 .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
@@ -244,7 +243,6 @@ impl MapData {
                 .fetch_one(pool)
                 .await
                 .and_then(|row| row.try_get("data"))
-                .map_err(sqlx::Error::from)
                 .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "redis")]
             MapData::Redis { connection, hash } => {
