@@ -76,7 +76,7 @@ impl World {
         match self.get_world_metadata().await {
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    eprintln!("No world.mt found, falling back to sqlite3 backend");
+                    log::warn!("No world.mt found, falling back to sqlite3 backend");
                     Ok(String::from("sqlite3"))
                 } else {
                     Err(WorldError::IOError(e))
@@ -85,7 +85,7 @@ impl World {
             Ok(metadata) => match metadata.get("backend") {
                 Some(backend) => Ok(backend.clone()),
                 None => {
-                    eprintln!("No backend mentioned in world.mt, falling back to sqlite3");
+                    log::warn!("No backend mentioned in world.mt, falling back to sqlite3");
                     Ok(String::from("sqlite3"))
                 }
             },
