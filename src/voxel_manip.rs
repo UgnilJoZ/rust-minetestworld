@@ -54,6 +54,9 @@ impl VoxelManip {
     }
 
     /// Get a reference to the mapblock at the given block position
+    ///
+    /// If there is no mapblock at this world position,
+    /// a new [unloaded](`MapBlock::unloaded`) mapblock is returned.
     pub async fn get_mapblock(&mut self, mapblock_pos: Position) -> Result<&MapBlock> {
         Ok(&self.get_entry(mapblock_pos).await?.mapblock)
     }
@@ -136,13 +139,13 @@ impl VoxelManip {
         .await
     }
 
-    /// Returns true if the mapblock containing this world position is cached
+    /// Returns true if this world position is cached
     pub fn is_in_cache(&self, node_pos: Position) -> bool {
         let blockpos = node_pos.mapblock_at();
         self.mapblock_cache.contains_key(&blockpos)
     }
 
-    /// Ensures that the mapblock containing this world position is in the cache
+    /// Ensures that this world position is in the cache
     pub async fn visit(&mut self, node_pos: Position) -> Result<()> {
         let blockpos = node_pos.mapblock_at();
         self.get_entry(blockpos).await?;

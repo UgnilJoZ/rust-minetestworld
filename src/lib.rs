@@ -1,5 +1,6 @@
-//! This crate lets you read the world data of a minetest world,
-//! as long as the mapblocks are already saved in map format version 29.
+//! This crate lets you read the world data of a minetest world.
+//!
+//! Only map format version 29 is supported. LevelDB backend is not supported.
 //!
 //! ## Terminology
 //! ### Node
