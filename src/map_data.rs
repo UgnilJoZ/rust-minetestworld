@@ -1,4 +1,5 @@
 //! Contains a type to read a world's map data
+use std::str::FromStr;
 #[cfg(feature = "experimental-leveldb")]
 use async_std::sync::{Arc, Mutex};
 use futures::future;
@@ -11,15 +12,16 @@ use leveldb_rs::{LevelDBError, DB as LevelDb};
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
-use sqlx::prelude::*;
+use sqlx::{prelude::*, ConnectOptions};
 #[cfg(feature = "sqlite")]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 #[cfg(feature = "postgres")]
-use sqlx::PgPool;
+use sqlx::{PgPool, postgres::PgConnectOptions};
 #[cfg(any(feature = "sqlite", feature = "experimental-leveldb"))]
 use std::path::Path;
 #[cfg(feature = "redis")]
 use url::Host;
+use log::LevelFilter;
 
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::Position;
@@ -122,13 +124,12 @@ impl MapData {
         filename: impl AsRef<Path>,
         read_only: bool,
     ) -> Result<MapData, MapDataError> {
-        match SqlitePool::connect_with(
-            SqliteConnectOptions::new()
+        let mut opts = SqliteConnectOptions::new()
                 .immutable(read_only)
                 .filename(filename)
-                .create_if_missing(!read_only),
-        )
-        .await
+                .create_if_missing(!read_only);
+        opts.log_statements(LevelFilter::Debug);
+        match SqlitePool::connect_with(opts).await
         {
             Ok(pool) => {
                 sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
@@ -141,7 +142,9 @@ impl MapData {
     #[cfg(feature = "postgres")]
     /// Connects to a Postgres database
     pub async fn from_pg_connection_params(url: &str) -> Result<MapData, MapDataError> {
-        Ok(MapData::Postgres(PgPool::connect(url).await?))
+        let mut opts = PgConnectOptions::from_str(url)?;
+        opts.log_statements(LevelFilter::Debug);
+        Ok(MapData::Postgres(PgPool::connect_with(opts).await?))
     }
 
     #[cfg(feature = "redis")]
