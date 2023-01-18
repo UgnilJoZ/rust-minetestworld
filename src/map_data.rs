@@ -1,5 +1,4 @@
 //! Contains a type to read a world's map data
-use std::str::FromStr;
 #[cfg(feature = "experimental-leveldb")]
 use async_std::sync::{Arc, Mutex};
 use futures::future;
@@ -9,19 +8,20 @@ use futures::stream::StreamExt;
 use futures::TryStreamExt;
 #[cfg(feature = "experimental-leveldb")]
 use leveldb_rs::{LevelDBError, DB as LevelDb};
+use log::LevelFilter;
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-use sqlx::{prelude::*, ConnectOptions};
 #[cfg(feature = "sqlite")]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 #[cfg(feature = "postgres")]
-use sqlx::{PgPool, postgres::PgConnectOptions};
+use sqlx::{postgres::PgConnectOptions, PgPool};
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+use sqlx::{prelude::*, ConnectOptions};
 #[cfg(any(feature = "sqlite", feature = "experimental-leveldb"))]
 use std::path::Path;
+use std::str::FromStr;
 #[cfg(feature = "redis")]
 use url::Host;
-use log::LevelFilter;
 
 use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
 use crate::positions::Position;
@@ -125,12 +125,11 @@ impl MapData {
         read_only: bool,
     ) -> Result<MapData, MapDataError> {
         let mut opts = SqliteConnectOptions::new()
-                .immutable(read_only)
-                .filename(filename)
-                .create_if_missing(!read_only);
+            .immutable(read_only)
+            .filename(filename)
+            .create_if_missing(!read_only);
         opts.log_statements(LevelFilter::Debug);
-        match SqlitePool::connect_with(opts).await
-        {
+        match SqlitePool::connect_with(opts).await {
             Ok(pool) => {
                 sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
                 Ok(MapData::Sqlite(pool))
