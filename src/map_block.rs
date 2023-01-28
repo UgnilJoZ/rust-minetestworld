@@ -158,6 +158,7 @@ pub struct NodeMetadata {
 /// Objects in the world that are not nodes
 ///
 /// For example a LuaEntity
+#[derive(Debug)]
 pub struct StaticObject {
     /// Type ID
     pub type_id: u8,
@@ -172,6 +173,7 @@ pub struct StaticObject {
 }
 
 /// Represents a running node timer
+#[derive(Debug)]
 pub struct NodeTimer {
     /// The mapblock-relative node position of this timer
     pub position: Position,
@@ -184,6 +186,7 @@ pub struct NodeTimer {
 /// A 'chunk' of voxels; the data unit saved in a backend
 ///
 /// Refer to <https://github.com/minetest/minetest/blob/master/doc/world_format.txt>
+#[derive(Debug)]
 pub struct MapBlock {
     /// The format version of the mapblock. Currently supported is only version 29.
     ///
