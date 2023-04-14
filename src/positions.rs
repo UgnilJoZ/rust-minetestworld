@@ -8,8 +8,8 @@ use sqlx::postgres::PgRow;
 use sqlx::sqlite::SqliteRow;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::{FromRow, Row};
-use std::ops::{Add, Rem};
 use std::io;
+use std::ops::{Add, Rem};
 
 /// A point location within the world
 ///
@@ -66,7 +66,8 @@ impl std::ops::Mul<i16> for Position {
 }
 
 fn invalid_data_error<E>(error: E) -> sqlx::Error
-    where E: Into<Box<dyn std::error::Error + Send + Sync>>
+where
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     sqlx::Error::Io(io::Error::new(io::ErrorKind::InvalidData, error))
 }
