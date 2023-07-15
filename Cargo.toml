@@ -1,6 +1,6 @@
 [package]
 name = "minetestworld"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Jan Ole Zabel <jan.zabel@posteo.de>"]
 license = "AGPL-3.0"
 repository = "https://github.com/UgnilJoZ/rust-minetestworld/"
