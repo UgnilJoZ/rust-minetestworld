@@ -10,8 +10,8 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1.0"
-sqlx = { version = "0.6", features = [ "runtime-async-std-native-tls" ], optional = true }
-redis = { version = "0.22.2", default-features = false, features = [ "async-std-comp" ], optional = true }
+sqlx = { version = "0.7", features = [ "runtime-async-std-native-tls" ], optional = true }
+redis = { version = "0.23", default-features = false, features = [ "async-std-comp" ], optional = true }
 leveldb-rs = { version = "0.0.7", optional = true }
 url = { version = "2.2", optional = true }
 async-std = { version = "1", features = [ "attributes" ] }

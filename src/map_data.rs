@@ -124,11 +124,11 @@ impl MapData {
         filename: impl AsRef<Path>,
         read_only: bool,
     ) -> Result<MapData, MapDataError> {
-        let mut opts = SqliteConnectOptions::new()
+        let opts = SqliteConnectOptions::new()
             .immutable(read_only)
             .filename(filename)
-            .create_if_missing(!read_only);
-        opts.log_statements(LevelFilter::Debug);
+            .create_if_missing(!read_only)
+            .log_statements(LevelFilter::Debug);
         match SqlitePool::connect_with(opts).await {
             Ok(pool) => {
                 sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
@@ -141,8 +141,7 @@ impl MapData {
     #[cfg(feature = "postgres")]
     /// Connects to a Postgres database
     pub async fn from_pg_connection_params(url: &str) -> Result<MapData, MapDataError> {
-        let mut opts = PgConnectOptions::from_str(url)?;
-        opts.log_statements(LevelFilter::Debug);
+        let opts = PgConnectOptions::from_str(url)?.log_statements(LevelFilter::Debug);
         Ok(MapData::Postgres(PgPool::connect_with(opts).await?))
     }
 
