@@ -10,7 +10,7 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1.0"
-sqlx = { version = "0.7", features = [ "runtime-async-std-native-tls" ], optional = true }
+sqlx = { version = "0.7", features = [ "runtime-async-std" ], optional = true }
 redis = { version = "0.23", default-features = false, features = [ "async-std-comp" ], optional = true }
 leveldb-rs = { version = "0.0.7", optional = true }
 url = { version = "2.2", optional = true }
@@ -29,3 +29,5 @@ redis = ["dep:redis", "url"]
 sqlite = ["sqlx/sqlite"]
 postgres = ["sqlx/postgres", "url"]
 experimental-leveldb = ["leveldb-rs"]
+tls-native-tls = ["sqlx/tls-native-tls"]
+tls-rustls = ["sqlx/tls-rustls"]
