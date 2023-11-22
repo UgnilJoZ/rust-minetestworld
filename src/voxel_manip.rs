@@ -73,7 +73,7 @@ impl VoxelManip {
         blockpos: Position,
         op: impl FnOnce(&mut MapBlock),
     ) -> Result<()> {
-        let mut entry = &mut self.get_entry(blockpos).await?;
+        let entry = &mut self.get_entry(blockpos).await?;
         op(&mut entry.mapblock);
         entry.tainted = true;
         Ok(())
