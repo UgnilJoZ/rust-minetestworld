@@ -72,12 +72,8 @@ async fn can_parse_all_mapblocks() {
         .try_collect()
         .await
         .unwrap();
-    let blocks: Vec<_> = futures::future::join_all(
-        positions
-            .iter()
-            .map(|pos| mapdata.get_mapblock(pos.clone())),
-    )
-    .await;
+    let blocks: Vec<_> =
+        futures::future::join_all(positions.iter().map(|pos| mapdata.get_mapblock(*pos))).await;
     let succeeded = blocks.iter().filter(|b| b.is_ok()).count();
     let failed = blocks.iter().filter(|b| b.is_err()).count();
     eprintln!("Succeeded parsed blocks: {succeeded}\nFailed blocks: {failed}");

@@ -2,9 +2,9 @@
 
 use crate::MAPBLOCK_LENGTH;
 use num_integer::div_floor;
-#[cfg(any(feature = "postgres"))]
+#[cfg(feature = "postgres")]
 use sqlx::postgres::PgRow;
-#[cfg(any(feature = "sqlite"))]
+#[cfg(feature = "sqlite")]
 use sqlx::sqlite::SqliteRow;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::{FromRow, Row};
