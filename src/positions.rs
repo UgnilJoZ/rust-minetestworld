@@ -1,6 +1,7 @@
 //! Functions and datatypes to work with world coordinates
 
 use crate::MAPBLOCK_LENGTH;
+use glam::{I16Vec3, IVec3, U16Vec3};
 use num_integer::div_floor;
 #[cfg(feature = "postgres")]
 use sqlx::postgres::PgRow;
@@ -19,25 +20,19 @@ use std::ops::{Add, Rem};
 /// MapBlock [side length](`crate::MAPBLOCK_LENGTH`).
 ///
 /// A voxel position may either be absolute or relative to a mapblock root.
+///
+/// - `x`: "East direction". The direction in which the sun rises.
+/// - `y`: "Up" direction
+/// - `z`: "North" direction. 90° left from the direction the sun rises.
+#[repr(transparent)]
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
-pub struct Position {
-    /// "East direction". The direction in which the sun rises.
-    pub x: i16,
-    /// "Up" direction
-    pub y: i16,
-    /// "North" direction. 90° left from the direction the sun rises.
-    pub z: i16,
-}
+pub struct Position(pub I16Vec3);
 
 impl std::ops::Add for Position {
     type Output = Self;
 
-    fn add(self, other: Self) -> Self {
-        Position {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0 + rhs.0)
     }
 }
 
@@ -45,11 +40,7 @@ impl std::ops::Sub for Position {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Position {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-            z: self.z - rhs.z,
-        }
+        Self(self.0 - rhs.0)
     }
 }
 
@@ -57,11 +48,19 @@ impl std::ops::Mul<i16> for Position {
     type Output = Self;
 
     fn mul(self, rhs: i16) -> Self {
-        Position {
-            x: self.x * rhs,
-            y: self.y * rhs,
-            z: self.z * rhs,
-        }
+        Self(self.0 * rhs)
+    }
+}
+
+impl From<I16Vec3> for Position {
+    fn from(value: I16Vec3) -> Self {
+        Position(value)
+    }
+}
+
+impl From<Position> for I16Vec3 {
+    fn from(value: Position) -> Self {
+        value.0
     }
 }
 
@@ -83,14 +82,14 @@ impl FromRow<'_, SqliteRow> for Position {
 impl FromRow<'_, PgRow> for Position {
     /// Will fail if one of the pos components do not fit in an i16
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
-        let x: i32 = row.try_get("posx")?;
-        let y: i32 = row.try_get("posy")?;
-        let z: i32 = row.try_get("posz")?;
-        Ok(Position {
-            x: x.try_into().map_err(invalid_data_error)?,
-            y: y.try_into().map_err(invalid_data_error)?,
-            z: z.try_into().map_err(invalid_data_error)?,
-        })
+        IVec3::new(
+            row.try_get("posx")?,
+            row.try_get("posy")?,
+            row.try_get("posz")?,
+        )
+        .try_into()
+        .map(Self)
+        .map_err(invalid_data_error)
     }
 }
 
@@ -105,66 +104,50 @@ where
 impl Position {
     /// Create a new position value from its components
     pub fn new<I: Into<i16>>(x: I, y: I, z: I) -> Self {
-        Position {
-            x: x.into(),
-            y: y.into(),
-            z: z.into(),
-        }
+        I16Vec3::new(x.into(), y.into(), z.into()).into()
     }
 
     /// Convert a mapblock database index into coordinates
     pub(crate) fn from_database_key(i: i64) -> Position {
-        fn unsigned_to_signed(i: i64, max_positive: i64) -> i64 {
-            if i < max_positive {
-                i
-            } else {
-                i - 2 * max_positive
-            }
-        }
-
-        let x = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
-        let mut i = (i - x as i64) / 4096;
-        let y = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
-        i = (i - y as i64) / 4096;
-        let z = unsigned_to_signed(modulo(i, 4096), 2048) as i16;
-        Position { x, y, z }
+        // i = ........:........:........:....zzzz:zzzzzzzz:yyyyyyyy:yyyyxxxx:xxxxxxxx
+        // for each coordinate: left-align within i16; cast to i16; sign extended right-align
+        Position::from(I16Vec3::new((i << 4) as i16, (i >> 8) as i16, (i >> 20) as i16) >> 4)
     }
 
     /// Convert a map block position to an integer
     ///
     /// This integer is used as primary key in the sqlite and redis backends.
-    pub(crate) fn as_database_key(&self) -> i64 {
-        self.x as i64 + self.y as i64 * 4096 + self.z as i64 * 16777216
+    pub(crate) fn as_database_key(self) -> i64 {
+        i64::from(self.0.x & 0x0fff)
+            | i64::from(self.0.y & 0x0fff) << 12
+            | i64::from(self.0.z & 0x0fff) << 24
     }
 
     /// Convert a nodex index (used in flat 16·16·16 arrays) into a node position
     ///
     /// The node position will be relative to the map block.
-    pub(crate) fn from_node_index(node_index: u16) -> Position {
-        let x = node_index % 16;
-        let i = node_index / 16;
-        let y = i % 16;
-        let i = node_index / 16;
-        let z = i % 16;
-        Position {
-            x: x as i16,
-            y: y as i16,
-            z: z as i16,
-        }
+    pub(crate) fn from_node_index(node_index: u16) -> Self {
+        U16Vec3::new(
+            node_index & 0x000f,
+            node_index >> 4 & 0x000f,
+            node_index >> 8 & 0x000f,
+        )
+        .as_i16vec3()
+        .into()
     }
 
     /// Convert a MapBlock-relative node position into a flat array index
     pub(crate) fn as_node_index(&self) -> u16 {
-        self.x as u16 + 16 * self.y as u16 + 256 * self.z as u16
+        self.0.x as u16 + 16 * self.0.y as u16 + 256 * self.0.z as u16
     }
 
     /// Return the mapblock position corresponding to this node position
     pub fn mapblock_at(&self) -> Position {
-        Position {
-            x: div_floor(self.x, MAPBLOCK_LENGTH.into()),
-            y: div_floor(self.y, MAPBLOCK_LENGTH.into()),
-            z: div_floor(self.z, MAPBLOCK_LENGTH.into()),
-        }
+        Position::new(
+            div_floor(self.0.x, MAPBLOCK_LENGTH.into()),
+            div_floor(self.0.y, MAPBLOCK_LENGTH.into()),
+            div_floor(self.0.z, MAPBLOCK_LENGTH.into()),
+        )
     }
 
     /// Split this node position into a mapblock position and a relative node position

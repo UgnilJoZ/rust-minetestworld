@@ -25,11 +25,7 @@
 //! use minetestworld::{World, Position};
 //! use async_std::task;
 //!
-//! let blockpos = Position {
-//!     x: -13,
-//!     y: -8,
-//!     z: 2,
-//! };
+//! let blockpos = Position::new::<i16>(-13, -8, 2);
 //!
 //! task::block_on(async {
 //!     let world = World::open("TestWorld");

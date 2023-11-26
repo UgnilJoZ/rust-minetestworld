@@ -238,9 +238,9 @@ impl MapData {
                 .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
-                .bind(pos.x)
-                .bind(pos.y)
-                .bind(pos.z)
+                .bind(pos.0.x)
+                .bind(pos.0.y)
+                .bind(pos.0.z)
                 .fetch_one(pool)
                 .await
                 .and_then(|row| row.try_get("data"))
@@ -283,9 +283,9 @@ impl MapData {
                 .map_err(MapDataError::SqlError),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
-                .bind(pos.x)
-                .bind(pos.y)
-                .bind(pos.z)
+                .bind(pos.0.x)
+                .bind(pos.0.y)
+                .bind(pos.0.z)
                 .bind(data)
                 .execute(pool)
                 .await

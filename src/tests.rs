@@ -10,11 +10,11 @@ use futures::prelude::*;
 fn simple_math() {
     assert_eq!(
         Position::from_database_key(134270984),
-        Position { x: 8, y: 13, z: 8 }
+        Position::new::<i16>(8, 13, 8)
     );
     assert_eq!(
         Position::from_database_key(-184549374),
-        Position { x: 2, y: 0, z: -11 }
+        Position::new::<i16>(2, 0, -11)
     );
 }
 
@@ -32,11 +32,7 @@ async fn can_query() {
         .unwrap();
     assert_eq!(mapdata.all_mapblock_positions().await.count().await, 5923);
     let block = mapdata
-        .get_block_data(Position {
-            x: -13,
-            y: -8,
-            z: 2,
-        })
+        .get_block_data(Position::new::<i16>(-13, -8, 2))
         .await
         .unwrap();
     assert_eq!(block.len(), 40);
@@ -44,7 +40,7 @@ async fn can_query() {
 
 #[async_std::test]
 async fn mapblock_miss() {
-    let position = Position { x: 0, y: 0, z: 0 };
+    let position = Position::new::<i16>(0, 0, 0);
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
@@ -86,11 +82,7 @@ async fn count_nodes() {
         .await
         .unwrap();
     let count = mapdata
-        .iter_mapblock_nodes(Position {
-            x: -13,
-            y: -8,
-            z: 2,
-        })
+        .iter_mapblock_nodes(Position::new::<i16>(-13, -8, 2))
         .await
         .unwrap()
         .count();
@@ -99,11 +91,7 @@ async fn count_nodes() {
 
 #[async_std::test]
 async fn iter_node_positions() {
-    let blockpos = Position {
-        x: -13,
-        y: -8,
-        z: 2,
-    };
+    let blockpos = Position::new::<i16>(-13, -8, 2);
 
     let world = World::open("TestWorld");
     let mapdata = world.get_map_data().await.unwrap();
@@ -114,14 +102,10 @@ async fn iter_node_positions() {
 
 #[test]
 fn node_index() {
-    assert_eq!(Position::from_node_index(0), Position { x: 0, y: 0, z: 0 });
+    assert_eq!(Position::from_node_index(0), Position::new::<i16>(0, 0, 0));
     assert_eq!(
         Position::from_node_index(4095),
-        Position {
-            x: 15,
-            y: 15,
-            z: 15,
-        }
+        Position::new::<i16>(15, 15, 15)
     )
 }
 
