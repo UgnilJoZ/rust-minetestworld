@@ -11,7 +11,7 @@ use sqlx::{FromRow, Row};
 use std::io;
 use std::ops::{Add, Rem};
 
-/// A point location within the world
+/// A point location within a Minetest world
 ///
 /// This type is used for addressing one of the following:
 /// * voxels ([nodes](`crate::Node`), node timers, metadata, ...).
