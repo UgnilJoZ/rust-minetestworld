@@ -11,12 +11,12 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0"
 sqlx = { version = "0.7", features = [ "runtime-async-std" ], optional = true }
-redis = { version = "0.23", default-features = false, features = [ "async-std-comp" ], optional = true }
+redis = { version = "0.24", default-features = false, features = [ "async-std-comp" ], optional = true }
 leveldb-rs = { version = "0.0.7", optional = true }
 url = { version = "2.2", optional = true }
 async-std = { version = "1", features = [ "attributes" ] }
 futures = "0.3"
-zstd = "0.12"
+zstd = "0.13"
 log = "0.4"
 num-integer = "0.1" # Needed for div_floor until https://github.com/rust-lang/rust/issues/88581 is stabilized
 
