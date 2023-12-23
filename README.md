@@ -5,7 +5,7 @@ This crate lets you read minetest worlds in a low-level way.
 [![Build](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml/badge.svg)](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml)
 [![Crates.io](https://img.shields.io/crates/v/minetestworld.svg)](https://crates.io/crates/minetestworld)
 [![Documentation](https://docs.rs/minetestworld/badge.svg)](https://docs.rs/minetestworld/)
-[![dependency status](https://deps.rs/crate/minetestworld/0.5.3/status.svg)](https://deps.rs/crate/minetestworld/0.5.3)
+[![dependency status](https://deps.rs/crate/minetestworld/0.5.4/status.svg)](https://deps.rs/crate/minetestworld/0.5.4)
 
 # Usage
 As this crate returns async-std based futures, you have to specify that along the dependencies:
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-## Selectable backends
+## Selectable features
 The Cargo features `sqlite`, `redis`, and `postgres` enable the respective map data backend. They are enabled by default and can be selected individually:
 ```toml
 [dependencies]
@@ -56,5 +56,7 @@ minetestworld = { version = "0.5.3", default-features = false, features = [ "sql
 ```
 
 This crate only compiles if at least one backend is enabled, because it becomes pointless without.
+
+To gain TLS support for the `postgres` connection, add the `tls-rustls` or the `tls-native-tls` feature.
 
 See [minetest-worldmapper](https://github.com/UgnilJoZ/minetest-worldmapper) for a real-world example.
