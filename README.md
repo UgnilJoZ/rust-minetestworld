@@ -11,7 +11,7 @@ This crate lets you read minetest worlds in a low-level way.
 As this crate returns async-std based futures, you have to specify that along the dependencies:
 ```toml
 [dependencies]
-minetestworld = "0.5.3"
+minetestworld = "0.5.4"
 async-std = "1"
 ```
 
@@ -21,7 +21,7 @@ Here is an example that reads all nodes of a specific map block:
 ```toml
 [dependencies]
 async-std = { version = "1", features = [ "attributes" ] }
-minetestworld = "0.5.3"
+minetestworld = "0.5.4"
 ```
 
 ```rs
