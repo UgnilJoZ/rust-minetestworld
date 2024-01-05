@@ -81,6 +81,11 @@ fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
     Ok(params)
 }
 
+
+/// The numerical representation of the node type
+#[derive(Debug, Clone, Copy)]
+struct NodeId(u16);
+
 /// The physical composition of the world at a specific voxel
 ///
 /// Nodes are the voxel-shaped 1 m³ blocks that the world consists of.
@@ -406,6 +411,11 @@ impl MapBlock {
     pub fn content_names(&self) -> impl Iterator<Item = &[u8]> {
         self.name_id_mappings.values().map(Vec::as_slice)
     }
+    
+    /// Returns nodes and their numbering relative to block origin
+    pub fn iter_nodes(&self) -> impl Iterator<Item=(Position, Node)> + '_ {
+        NodeIter::from(self, Position { x: 0, y: 0, z: 0})
+    }
 }
 
 // Helper functions to read and write smaller chunks of binary data
@@ -630,14 +640,14 @@ fn write_node_timers(data: &[NodeTimer], dest: &mut impl Write) -> std::io::Resu
 ///
 /// This yields tuples in the form ([world_position][`Position`],
 /// [node][`Node`]).
-pub struct NodeIter {
-    mapblock: MapBlock,
+pub struct NodeIter<'a> {
+    mapblock: &'a MapBlock,
     mapblock_position: Position,
     node_index: u16,
 }
 
-impl NodeIter {
-    pub(crate) fn from(mapblock: MapBlock, mapblock_position: Position) -> Self {
+impl<'a> NodeIter<'a> {
+    pub(crate) fn from(mapblock: &'a MapBlock, mapblock_position: Position) -> Self {
         NodeIter {
             mapblock,
             mapblock_position,
@@ -646,7 +656,7 @@ impl NodeIter {
     }
 }
 
-impl Iterator for NodeIter {
+impl<'a> Iterator for NodeIter<'a> {
     /// A tuple consisting of the node and its position in the world.
     type Item = (Position, Node);
 
