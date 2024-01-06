@@ -5,9 +5,21 @@ use crate::positions::Position;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::marker::PhantomData;
 
 #[cfg(feature = "smartstring")]
 type String = smartstring::SmartString<smartstring::LazyCompact>;
+
+/// Content type string
+///
+/// This is the [item string](https://wiki.minetest.net/Itemstrings) of this node's content.
+/// It identifies the "material" that this voxel consists of.
+///
+/// ### Example values:
+/// * [`vec![b"default:stone"]`](https://wiki.minetest.net/Stone)
+/// * [`vec![b"air"]`](https://wiki.minetest.net/Air)
+/// * [`vec![b"ignore"]`](https://wiki.minetest.net/Ignore)
+pub type IdName = Vec<u8>;
 
 /// Side length of map blocks.
 ///
@@ -82,25 +94,29 @@ fn read_nodeparams(r: &mut impl Read) -> std::io::Result<[u8; MAPBLOCK_SIZE]> {
 }
 
 
-/// The numerical representation of the node type
+/// The numerical representation of the node type, attached to the block that holds its name.
+/// Needs to get converted to a name using block's mapping before interpreting.
 #[derive(Debug, Clone, Copy)]
-struct NodeId(u16);
+pub struct NodeId<'a>(
+    u16,
+    // Carrying the pointer explicitly would waste lots of memory. Instead rely on the compiler to keep the reference alive.
+    // This has the (acceptable) downside of letting the user resolve the ID using the wrong block if it has the same lifetime.
+    PhantomData<&'a MapBlock>,
+);
+
+impl<'a> NodeId<'a> {
+    fn new(id: u16) -> Self {
+        Self(id, PhantomData::default())
+    }
+}
 
 /// The physical composition of the world at a specific voxel
 ///
 /// Nodes are the voxel-shaped 1 m³ blocks that the world consists of.
 #[derive(Debug, Clone)]
-pub struct Node {
-    /// Content type string
-    ///
-    /// This is the [item string](https://wiki.minetest.net/Itemstrings) of this node's content.
-    /// It identifies the "material" that this voxel consists of.
-    ///
-    /// ### Example values:
-    /// * [`vec![b"default:stone"]`](https://wiki.minetest.net/Stone)
-    /// * [`vec![b"air"]`](https://wiki.minetest.net/Air)
-    /// * [`vec![b"ignore"]`](https://wiki.minetest.net/Ignore)
-    pub param0: Vec<u8>,
+pub struct Node<IdT> {
+    /// The ID of the contents
+    pub param0: IdT,
     /// Lighting data
     pub param1: u8,
     /// Additional data
@@ -337,7 +353,7 @@ impl MapBlock {
     }
 
     /// Queries the mapblock for a node on the given mapblock-relative coordinates
-    pub fn get_node_at(&self, relative_node_pos: Position) -> Node {
+    pub fn get_node_at(&self, relative_node_pos: Position) -> Node<IdName> {
         let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
         let param0 = self.content_from_id(self.param0[index]);
         Node {
@@ -413,7 +429,7 @@ impl MapBlock {
     }
     
     /// Returns nodes and their numbering relative to block origin
-    pub fn iter_nodes(&self) -> impl Iterator<Item=(Position, Node)> + '_ {
+    pub fn iter_nodes(&self) -> impl Iterator<Item=(Position, Node<NodeId<'_>>)> + '_ {
         NodeIter::from(self, Position { x: 0, y: 0, z: 0})
     }
 }
@@ -658,7 +674,7 @@ impl<'a> NodeIter<'a> {
 
 impl<'a> Iterator for NodeIter<'a> {
     /// A tuple consisting of the node and its position in the world.
-    type Item = (Position, Node);
+    type Item = (Position, Node<NodeId<'a>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.node_index;
@@ -666,11 +682,8 @@ impl<'a> Iterator for NodeIter<'a> {
             self.node_index += 1;
             let pos =
                 self.mapblock_position * MAPBLOCK_LENGTH as i16 + Position::from_node_index(index);
-            let param0 = self
-                .mapblock
-                .content_from_id(self.mapblock.param0[index as usize]);
             let node = Node {
-                param0: param0.to_vec(),
+                param0: NodeId::new(self.mapblock.param0[index as usize]),
                 param1: self.mapblock.param1[index as usize],
                 param2: self.mapblock.param2[index as usize],
             };

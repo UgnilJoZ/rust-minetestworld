@@ -3,7 +3,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use crate::{MapBlock, MapData, MapDataError, Node, Position};
+use crate::{MapBlock, MapData, MapDataError, Node, Position, IdName};
 type Result<T> = std::result::Result<T, MapDataError>;
 
 struct CacheEntry {
@@ -62,7 +62,7 @@ impl VoxelManip {
     }
 
     /// Get the node at the given world position
-    pub async fn get_node(&mut self, node_pos: Position) -> Result<Node> {
+    pub async fn get_node(&mut self, node_pos: Position) -> Result<Node<IdName>> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         Ok(self.get_mapblock(blockpos).await?.get_node_at(nodepos))
     }
@@ -83,7 +83,7 @@ impl VoxelManip {
     ///
     /// ⚠️ The change will be present locally only. To modify the map,
     /// the change has to be written back via [`VoxelManip::commit`].
-    pub async fn set_node(&mut self, node_pos: Position, node: Node) -> Result<()> {
+    pub async fn set_node(&mut self, node_pos: Position, node: Node<IdName>) -> Result<()> {
         let (blockpos, nodepos) = node_pos.split_at_block();
         self.modify_mapblock(blockpos, |mapblock| {
             let content_id = mapblock.get_or_create_content_id(&node.param0);
