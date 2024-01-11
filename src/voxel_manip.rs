@@ -64,7 +64,7 @@ impl VoxelManip {
     /// Get the node at the given world position
     pub async fn get_node(&mut self, node_pos: Position) -> Result<Node<IdName>> {
         let (blockpos, nodepos) = node_pos.split_at_block();
-        Ok(self.get_mapblock(blockpos).await?.get_node_at(nodepos))
+        Ok(self.get_mapblock(blockpos).await?.get_owned_node(nodepos))
     }
 
     /// Do something with the mapblock at `blockpos` and mark it as modified

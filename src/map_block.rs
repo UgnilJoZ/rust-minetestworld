@@ -108,6 +108,10 @@ impl<'a> NodeId<'a> {
     fn new(id: u16) -> Self {
         Self(id, PhantomData::default())
     }
+    /// Returns the raw numerical value
+    pub fn raw_id(&self) -> u16 {
+        self.0
+    }
 }
 
 /// The physical composition of the world at a specific voxel
@@ -150,7 +154,7 @@ pub enum MapBlockError {
 }
 
 /// Maps mapblock-local content IDs to content types
-pub type NameIdMappings = HashMap<u16, Vec<u8>>;
+pub type NameIdMappings = HashMap<u16, IdName>;
 
 /// A single node metadata variable, consisting of a key and a value
 #[derive(Debug)]
@@ -353,7 +357,17 @@ impl MapBlock {
     }
 
     /// Queries the mapblock for a node on the given mapblock-relative coordinates
-    pub fn get_node_at(&self, relative_node_pos: Position) -> Node<IdName> {
+    pub fn get_node_at(&self, relative_node_pos: Position) -> Node<NodeId<'_>> {
+        let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
+        Node {
+            param0: NodeId::new(self.param0[index]),
+            param1: self.param1[index],
+            param2: self.param2[index],
+        }
+    }
+    
+    /// Queries the mapblock for a node on the given mapblock-relative coordinates
+    pub fn get_owned_node(&self, relative_node_pos: Position) -> Node<IdName> {
         let index = relative_node_pos.as_node_index() as usize % MAPBLOCK_SIZE;
         let param0 = self.content_from_id(self.param0[index]);
         Node {
