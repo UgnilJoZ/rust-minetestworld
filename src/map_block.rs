@@ -34,6 +34,8 @@ pub type IdName = Vec<u8>;
 /// assert_eq!(MAPBLOCK_LENGTH, 16);
 /// ```
 pub const MAPBLOCK_LENGTH: u8 = 16;
+/// Bit shift to convert indices
+pub const MAPBLOCK_SHIFT: u8 = 4;
 
 /// How many nodes are contained in a map block.
 ///
@@ -157,7 +159,7 @@ pub enum MapBlockError {
 pub type NameIdMappings = HashMap<u16, IdName>;
 
 /// A single node metadata variable, consisting of a key and a value
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeVar {
     /// The 'name' of this variable
     pub key: Vec<u8>,
@@ -170,7 +172,7 @@ pub struct NodeVar {
 /// Metadata of a node
 ///
 /// In game, this is used for e.g. the inventory of a chest or the text of a sign
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeMetadata {
     /// The mapblock-relative node position of this item
     pub position: Position,
@@ -183,7 +185,7 @@ pub struct NodeMetadata {
 /// Objects in the world that are not nodes
 ///
 /// For example a LuaEntity
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StaticObject {
     /// Type ID
     pub type_id: u8,
@@ -198,7 +200,7 @@ pub struct StaticObject {
 }
 
 /// Represents a running node timer
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeTimer {
     /// The mapblock-relative node position of this timer
     pub position: Position,
@@ -211,7 +213,7 @@ pub struct NodeTimer {
 /// A 'chunk' of voxels; the data unit saved in a backend
 ///
 /// Refer to <https://github.com/minetest/minetest/blob/master/doc/world_format.md>
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MapBlock {
     /// The format version of the mapblock. Currently supported is only version 29.
     ///
