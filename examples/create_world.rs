@@ -1,6 +1,6 @@
 use minetestworld::{Node, Position, World};
 
-#[async_std::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let world = World::create_sqlite("NewWorld").await.unwrap();
     let mut vm = world.get_voxel_manip(true).await.unwrap();

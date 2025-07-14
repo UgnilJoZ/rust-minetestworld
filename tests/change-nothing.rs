@@ -27,7 +27,7 @@ async fn nop() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn test_nop() -> Result<(), Box<dyn Error>> {
     common::tear_up().await?;
     // No early return here, so that tear down happens in every case

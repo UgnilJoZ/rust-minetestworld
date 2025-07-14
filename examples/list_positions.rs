@@ -1,7 +1,7 @@
 use futures::TryStreamExt;
 use minetestworld::World;
 
-#[async_std::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let world = World::open("TestWorld");
     let data = world.get_map_data().await.unwrap();

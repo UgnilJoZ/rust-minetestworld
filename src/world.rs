@@ -3,12 +3,12 @@
 use crate::MapData;
 use crate::MapDataError;
 use crate::VoxelManip;
-use async_std::fs;
-use async_std::fs::File;
-use async_std::io::BufReader;
-use async_std::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use tokio::fs;
+use tokio::fs::File;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
 
 #[cfg(feature = "url")]
 use url::Url;
@@ -45,15 +45,15 @@ impl World {
     /// Reads the basic metadata of the world.
     ///
     /// ```
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// use minetestworld::World;
-    /// use async_std::task;
     ///
-    /// let meta = task::block_on(async {
-    ///     World::open("TestWorld").get_world_metadata().await
-    /// }).unwrap();
+    /// let meta = World::open("TestWorld").get_world_metadata().await.expect("Opening world");
     /// assert_eq!(meta.get("world_name").unwrap(), "Hallo");
     /// assert_eq!(meta.get("backend").unwrap(), "sqlite3");
     /// assert_eq!(meta.get("gameid").unwrap(), "minetest");
+    /// # }
     /// ```
     pub async fn get_world_metadata(&self) -> std::io::Result<HashMap<String, String>> {
         let World(path) = self;
@@ -61,8 +61,8 @@ impl World {
         let reader = BufReader::new(file);
         let mut result = HashMap::new();
         let mut lines = reader.lines();
-        while let Some(line) = lines.next().await {
-            if let Some((key, value)) = line?.split_once('=') {
+        while let Some(line) = lines.next_line().await? {
+            if let Some((key, value)) = line.split_once('=') {
                 result.insert(
                     String::from(key.trim_end()),
                     String::from(value.trim_start()),
@@ -95,12 +95,12 @@ impl World {
     /// Returns a handle to the map database.
     ///
     /// ```
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// use minetestworld::World;
-    /// use async_std::task;
     ///
-    /// let map_data = task::block_on(async {
-    ///     World::open("TestWorld").get_map_data().await.unwrap()
-    /// });
+    /// let map_data = World::open("TestWorld").get_map_data().await.unwrap();
+    /// # }
     /// ```
     pub async fn get_map_data_backend(&self, read_only: bool) -> Result<MapData, WorldError> {
         let backend = self.get_backend_name().await?;
@@ -157,12 +157,12 @@ impl World {
     /// It does not have to be explicitly closed, but may be not writable.
     ///
     /// ```
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// use minetestworld::World;
-    /// use async_std::task;
     ///
-    /// let map_data = task::block_on(async {
-    ///     World::open("TestWorld").get_map_data().await.unwrap()
-    /// });
+    /// let map_data = World::open("TestWorld").get_map_data().await.unwrap();
+    /// # }
     /// ```
     pub async fn get_map_data(&self) -> Result<MapData, WorldError> {
         self.get_map_data_backend(true).await
@@ -173,12 +173,13 @@ impl World {
     /// It has to be explicitly closed, since the sqlite3 dirty flag may be set.
     ///
     /// ```ignore
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// use minetestworld::World;
     /// use async_std::task;
     ///
-    /// let map_data = task::block_on(async {
-    ///     World::open("TestWorld").get_mutable_map_data().await.unwrap()
-    /// });
+    /// let map_data = World::open("TestWorld").get_mutable_map_data().await.unwrap();
+    /// # }
     /// ```
     pub async fn get_mutable_map_data(&self) -> Result<MapData, WorldError> {
         self.get_map_data_backend(true).await

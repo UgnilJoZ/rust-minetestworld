@@ -1,4 +1,4 @@
-use async_std::fs;
+use tokio::fs;
 
 pub async fn tear_up() -> std::io::Result<()> {
     fs::create_dir("TestWorld copy").await?;

@@ -113,12 +113,12 @@ impl MapData {
     /// If the `blocks` table does not exist, tries to create it.
     ///
     /// ```
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// use minetestworld::MapData;
-    /// use async_std::task;
     ///
-    /// let meta = task::block_on(async {
-    ///     MapData::from_sqlite_file("TestWorld/map.sqlite", false).await.unwrap();
-    /// });
+    /// let meta = MapData::from_sqlite_file("TestWorld/map.sqlite", false).await.unwrap();
+    /// # }
     /// ```
     pub async fn from_sqlite_file(
         filename: impl AsRef<Path>,

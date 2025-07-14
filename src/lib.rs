@@ -4,7 +4,7 @@
 //!
 //! ## Terminology
 //! ### Node
-//! [Nodes](`Node`) are the single voxels that the world data consist of. It has three properties:
+//! [Nodes](`Node`) are the single voxels that the world data consist of. They have three properties:
 //! 1. A content type, which is represented by an [itemstring](https://wiki.minetest.net/Itemstrings)
 //!    like `air` or `default:dirt`
 //! 2. Flags to determine lighting rendering
@@ -24,7 +24,7 @@
 //! This code snippet that reads all nodes of a specific map block:
 //! ```
 //! use minetestworld::{World, Position};
-//! use async_std::task;
+//! use tokio::task;
 //!
 //! let blockpos = Position {
 //!     x: -13,
@@ -32,13 +32,13 @@
 //!     z: 2,
 //! };
 //!
-//! task::block_on(async {
+//!async {
 //!     let world = World::open("TestWorld");
 //!     let mapdata = world.get_map_data().await.unwrap();
 //!     for (pos, node) in mapdata.iter_mapblock_nodes(blockpos).await.unwrap() {
 //!         println!("{pos:?}, {node:?}");
 //!     }
-//! });
+//! };
 //! ```
 //!
 //! [Another notable example](https://docs.rs/crate/minetestworld/latest/source/examples/modify_map.rs)
@@ -47,9 +47,9 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-extern crate async_std;
 #[cfg(feature = "smartstring")]
 extern crate smartstring;
+extern crate tokio;
 
 pub mod map_block;
 pub mod map_data;

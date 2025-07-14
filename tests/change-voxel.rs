@@ -16,7 +16,7 @@ async fn change_voxel() -> Result<(), minetestworld::world::WorldError> {
     Ok(())
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn test_change() -> Result<(), Box<dyn Error>> {
     common::tear_up().await?;
     // No early return here, so that tear down happens in every case

@@ -18,14 +18,14 @@ fn simple_math() {
     );
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn db_exists() {
     MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
         .unwrap();
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn can_query() {
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
@@ -42,7 +42,7 @@ async fn can_query() {
     assert_eq!(block.len(), 40);
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn mapblock_miss() {
     let position = Position { x: 0, y: 0, z: 0 };
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
@@ -61,7 +61,7 @@ fn can_parse_mapblock() {
     MapBlock::from_data(std::fs::File::open("TestWorld/testmapblock").unwrap()).unwrap();
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn can_parse_all_mapblocks() {
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
@@ -80,7 +80,7 @@ async fn can_parse_all_mapblocks() {
     assert_eq!(failed, 0);
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn count_nodes() {
     let mapdata = MapData::from_sqlite_file("TestWorld/map.sqlite", true)
         .await
@@ -97,7 +97,7 @@ async fn count_nodes() {
     assert_eq!(count, 4096);
 }
 
-#[async_std::test]
+#[tokio::test]
 async fn iter_node_positions() {
     let blockpos = Position {
         x: -13,

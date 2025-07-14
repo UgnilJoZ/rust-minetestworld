@@ -8,11 +8,11 @@ This crate lets you read minetest worlds in a low-level way.
 [![dependency status](https://deps.rs/crate/minetestworld/0.5.4/status.svg)](https://deps.rs/crate/minetestworld/0.5.4)
 
 # Usage
-As this crate returns async-std based futures, you have to specify that along the dependencies:
+As this crate returns tokio based futures, you have to specify that along the dependencies:
 ```toml
 [dependencies]
 minetestworld = "0.5.4"
-async-std = "1"
+tokio = "1"
 ```
 
 ## An example
@@ -20,17 +20,17 @@ async-std = "1"
 Here is an example that reads all nodes of a specific map block:
 ```toml
 [dependencies]
-async-std = { version = "1", features = [ "attributes" ] }
+tokio = { version = "1", features = ["full"] }
 minetestworld = "0.5.4"
+futures = "0.3"
 ```
 
 ```rs
 use std::error::Error;
-use async_std::task;
-use async_std::stream::StreamExt;
+use futures::StreamExt;
 use minetestworld::{World, Position};
 
-#[async_std::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     let world = World::open("TestWorld");
     let mapdata = world.get_map_data().await?;

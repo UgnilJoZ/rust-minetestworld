@@ -1,6 +1,6 @@
 use minetestworld::{Position, World};
 
-#[async_std::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let world = World::open("TestWorld");
     let mut vm = world.get_voxel_manip(true).await.unwrap();
