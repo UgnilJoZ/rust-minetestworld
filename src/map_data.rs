@@ -12,7 +12,7 @@ use log::LevelFilter;
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
 #[cfg(feature = "sqlite")]
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqliteRow};
 #[cfg(feature = "postgres")]
 use sqlx::{postgres::PgConnectOptions, PgPool};
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
@@ -29,8 +29,11 @@ use crate::positions::Position;
 const POSTGRES_QUERY: &str = "SELECT data FROM blocks
  WHERE (posx = $1 AND posy = $2 AND posz = $3)";
 
-const SQLITE_UPSERT: &str = "INSERT INTO blocks VALUES (?, ?)
+const SQLITE_UPSERT_UNIFIED_POS: &str = "INSERT INTO blocks VALUES (?, ?)
  ON CONFLICT(pos) DO UPDATE SET data=excluded.data";
+
+const SQLITE_UPSERT: &str = "INSERT INTO blocks(x, y, z, data) VALUES (?, ?, ?, ?)
+ ON CONFLICT(x, y, z) DO UPDATE SET data=excluded.data";
 
 const POSTGRES_UPSERT: &str = "INSERT INTO blocks VALUES($1, $2, $3, $4)
  ON CONFLICT(posx,posy,posz) DO UPDATE SET data=excluded.data";
@@ -86,7 +89,14 @@ impl MapDataError {
 pub enum MapData {
     /// This variant covers the SQLite database backend
     #[cfg(feature = "sqlite")]
-    Sqlite(SqlitePool),
+    Sqlite {
+        /// The handle to the database client
+        connection: SqlitePool,
+        /// True if the opened database uses the [current position schema](https://github.com/luanti-org/luanti/pull/15768).
+        ///
+        /// If False, the block position is stored in a single integer column.
+        split_blockpos: bool,
+    },
 
     /// This variant supports PostgreSQL as a backend
     #[cfg(feature = "postgres")]
@@ -132,7 +142,10 @@ impl MapData {
         match SqlitePool::connect_with(opts).await {
             Ok(pool) => {
                 sqlx::query("CREATE TABLE IF NOT EXISTS blocks (`pos` INT NOT NULL PRIMARY KEY,`data` BLOB)").execute(&pool).await?;
-                Ok(MapData::Sqlite(pool))
+                Ok(MapData::Sqlite {
+                    connection: pool.clone(),
+                    split_blockpos: !sqlite_column_exists(pool, "pos").await?,
+                })
             }
             Err(e) => Err(MapDataError::SqlError(e)),
         }
@@ -177,10 +190,32 @@ impl MapData {
     pub async fn all_mapblock_positions(&self) -> BoxStream<Result<Position, MapDataError>> {
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => sqlx::query_as("SELECT pos FROM blocks")
-                .fetch(pool)
-                .map_err(MapDataError::SqlError)
-                .boxed(),
+            MapData::Sqlite {
+                connection,
+                split_blockpos,
+            } => {
+                if *split_blockpos {
+                    sqlx::query("SELECT x, y, z FROM blocks")
+                        .try_map(|row: SqliteRow| {
+                            Ok(Position {
+                                x: row.try_get("x")?,
+                                y: row.try_get("y")?,
+                                z: row.try_get("z")?,
+                            })
+                        })
+                        .fetch(connection)
+                        .map_err(MapDataError::SqlError)
+                        .boxed()
+                } else {
+                    sqlx::query("SELECT pos FROM blocks")
+                        .try_map(|row: SqliteRow| {
+                            Ok(Position::from_database_key(row.try_get("pos")?))
+                        })
+                        .fetch(connection)
+                        .map_err(MapDataError::SqlError)
+                        .boxed()
+                }
+            }
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query_as("SELECT posx, posy, posz FROM blocks")
                 .fetch(pool)
@@ -230,12 +265,21 @@ impl MapData {
         let pos_index = pos.as_database_key();
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => sqlx::query("SELECT data FROM blocks WHERE pos = ?")
-                .bind(pos_index)
-                .fetch_one(pool)
-                .await
-                .and_then(|row| row.try_get("data"))
-                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
+            MapData::Sqlite {
+                connection,
+                split_blockpos,
+            } => if *split_blockpos {
+                sqlx::query("SELECT data FROM blocks WHERE x = ? AND y = ? AND z = ?")
+                    .bind(pos.x)
+                    .bind(pos.y)
+                    .bind(pos.z)
+            } else {
+                sqlx::query("SELECT data FROM blocks WHERE pos = ?").bind(pos_index)
+            }
+            .fetch_one(connection)
+            .await
+            .and_then(|row| row.try_get("data"))
+            .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
                 .bind(pos.x)
@@ -274,13 +318,22 @@ impl MapData {
     pub async fn set_mapblock_data(&self, pos: Position, data: &[u8]) -> Result<(), MapDataError> {
         match self {
             #[cfg(feature = "sqlite")]
-            MapData::Sqlite(pool) => sqlx::query(SQLITE_UPSERT)
-                .bind(pos.as_database_key())
-                .bind(data)
-                .execute(pool)
-                .await
-                .map(|_| {})
-                .map_err(MapDataError::SqlError),
+            MapData::Sqlite {
+                connection,
+                split_blockpos,
+            } => if *split_blockpos {
+                sqlx::query(SQLITE_UPSERT)
+                    .bind(pos.x)
+                    .bind(pos.y)
+                    .bind(pos.z)
+            } else {
+                sqlx::query(SQLITE_UPSERT_UNIFIED_POS).bind(pos.as_database_key())
+            }
+            .bind(data)
+            .execute(connection)
+            .await
+            .map(|_| {})
+            .map_err(MapDataError::SqlError),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
                 .bind(pos.x)
@@ -315,4 +368,13 @@ impl MapData {
         let mapblock = self.get_mapblock(mapblock_pos).await?;
         Ok(NodeIter::from(mapblock, mapblock_pos))
     }
+}
+
+async fn sqlite_column_exists(pool: SqlitePool, column_name: &str) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query("PRAGMA table_info(blocks)")
+        .fetch_all(&pool)
+        .await?
+        .iter()
+        .map::<String, _>(|col| col.get("name"))
+        .any(|colname| colname == column_name))
 }
