@@ -5,13 +5,13 @@ This crate lets you read Luanti worlds in a low-level way.
 [![Build](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml/badge.svg)](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml)
 [![Crates.io](https://img.shields.io/crates/v/minetestworld.svg)](https://crates.io/crates/minetestworld)
 [![Documentation](https://docs.rs/minetestworld/badge.svg)](https://docs.rs/minetestworld/)
-[![dependency status](https://deps.rs/crate/minetestworld/0.5.4/status.svg)](https://deps.rs/crate/minetestworld/0.5.4)
+[![dependency status](https://deps.rs/crate/minetestworld/0.6.0/status.svg)](https://deps.rs/crate/minetestworld/0.6.0)
 
 # Usage
 As this crate returns tokio based futures, you have to specify that along the dependencies:
 ```toml
 [dependencies]
-minetestworld = "0.5.4"
+minetestworld = "0.6"
 tokio = "1"
 ```
 
@@ -21,7 +21,7 @@ Here is an example that reads all nodes of a specific chunk ("map block"):
 ```toml
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-minetestworld = "0.5.4"
+minetestworld = "0.6"
 futures = "0.3"
 ```
 
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 The Cargo features `sqlite`, `redis`, and `postgres` enable the respective map data backend. They are enabled by default and can be selected individually:
 ```toml
 [dependencies]
-minetestworld = { version = "0.5.3", default-features = false, features = [ "sqlite" ] }
+minetestworld = { version = "0.6", default-features = false, features = [ "sqlite" ] }
 ```
 
 This crate only compiles if at least one backend is enabled, because it becomes pointless without.
