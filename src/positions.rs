@@ -8,7 +8,6 @@ use sqlx::postgres::PgRow;
 use sqlx::sqlite::SqliteRow;
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::{FromRow, Row};
-use std::io;
 use std::ops::{Add, Rem};
 
 /// A point location within a Minetest world
@@ -65,13 +64,6 @@ impl std::ops::Mul<i16> for Position {
     }
 }
 
-fn invalid_data_error<E>(error: E) -> sqlx::Error
-where
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    sqlx::Error::Io(io::Error::new(io::ErrorKind::InvalidData, error))
-}
-
 #[cfg(feature = "sqlite")]
 impl FromRow<'_, SqliteRow> for Position {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
@@ -83,13 +75,10 @@ impl FromRow<'_, SqliteRow> for Position {
 impl FromRow<'_, PgRow> for Position {
     /// Will fail if one of the pos components do not fit in an i16
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
-        let x: i32 = row.try_get("posx")?;
-        let y: i32 = row.try_get("posy")?;
-        let z: i32 = row.try_get("posz")?;
         Ok(Position {
-            x: x.try_into().map_err(invalid_data_error)?,
-            y: y.try_into().map_err(invalid_data_error)?,
-            z: z.try_into().map_err(invalid_data_error)?,
+            x: row.try_get("posx")?,
+            y: row.try_get("posy")?,
+            z: row.try_get("posz")?,
         })
     }
 }
