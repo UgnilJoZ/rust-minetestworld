@@ -1,6 +1,6 @@
 # minetestworld
 
-This crate lets you read minetest worlds in a low-level way.
+This crate lets you read Luanti worlds in a low-level way.
 
 [![Build](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml/badge.svg)](https://github.com/UgnilJoZ/rust-minetestworld/actions/workflows/rust.yaml)
 [![Crates.io](https://img.shields.io/crates/v/minetestworld.svg)](https://crates.io/crates/minetestworld)
@@ -17,7 +17,7 @@ tokio = "1"
 
 ## An example
 
-Here is an example that reads all nodes of a specific map block:
+Here is an example that reads all nodes of a specific chunk ("map block"):
 ```toml
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -32,6 +32,7 @@ use minetestworld::{World, Position};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Open a world by its path
     let world = World::open("TestWorld");
     let mapdata = world.get_map_data().await?;
 
