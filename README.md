@@ -58,6 +58,6 @@ minetestworld = { version = "0.6", default-features = false, features = [ "sqlit
 
 This crate only compiles if at least one backend is enabled, because it becomes pointless without.
 
-To gain TLS support for the `postgres` connection, add the `tls-rustls` or the `tls-native-tls` feature.
+To gain TLS support for the `postgres` and `redis` connections, add the `tls-rustls` or the `tls-native-tls` feature.
 
 See [minetest-worldmapper](https://github.com/UgnilJoZ/minetest-worldmapper) for a real-world example.
