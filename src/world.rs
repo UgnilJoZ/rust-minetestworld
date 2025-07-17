@@ -176,7 +176,6 @@ impl World {
     /// # #[tokio::main]
     /// # async fn main() {
     /// use minetestworld::World;
-    /// use async_std::task;
     ///
     /// let map_data = World::open("TestWorld").get_mutable_map_data().await.unwrap();
     /// # }

@@ -1,6 +1,6 @@
 //! Contains a type to read a world's map data
 #[cfg(feature = "experimental-leveldb")]
-use async_std::sync::{Arc, Mutex};
+use tokio::sync::{Arc, Mutex};
 use futures::future;
 use futures::stream;
 use futures::stream::BoxStream;
@@ -170,7 +170,7 @@ impl MapData {
                 "redis://{host}{}/",
                 port.map(|p| format!(":{p}")).unwrap_or_default()
             ))?
-            .get_multiplexed_async_std_connection()
+            .get_multiplexed_tokio_connection()
             .await?,
             hash: hash.to_string(),
         })
