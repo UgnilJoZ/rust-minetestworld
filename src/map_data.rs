@@ -23,7 +23,7 @@ use std::str::FromStr;
 #[cfg(feature = "redis")]
 use url::Host;
 
-use crate::map_block::{MapBlock, MapBlockError, Node, NodeIter};
+use crate::map_block::{MapBlock, MapBlockError};
 use crate::positions::Position;
 
 const POSTGRES_QUERY: &str = "SELECT data FROM blocks
@@ -356,17 +356,6 @@ impl MapData {
     /// Inserts or replaces the map block at `pos`
     pub async fn set_mapblock(&self, pos: Position, block: &MapBlock) -> Result<(), MapDataError> {
         self.set_mapblock_data(pos, &block.to_binary()?).await
-    }
-
-    /// Enumerate all nodes from the mapblock at `pos`
-    ///
-    /// Yields all nodes along with their relative position within the map block
-    pub async fn iter_mapblock_nodes(
-        &self,
-        mapblock_pos: Position,
-    ) -> Result<impl Iterator<Item = (Position, Node)>, MapDataError> {
-        let mapblock = self.get_mapblock(mapblock_pos).await?;
-        Ok(NodeIter::from(mapblock, mapblock_pos))
     }
 }
 

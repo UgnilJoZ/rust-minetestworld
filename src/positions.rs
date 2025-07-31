@@ -143,7 +143,7 @@ impl Position {
     }
 
     /// Convert a MapBlock-relative node position into a flat array index
-    pub(crate) fn as_node_index(&self) -> u16 {
+    pub fn as_node_index(&self) -> u16 {
         self.x as u16 + 16 * self.y as u16 + 256 * self.z as u16
     }
 
