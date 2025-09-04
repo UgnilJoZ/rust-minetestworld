@@ -104,6 +104,7 @@ impl World {
     /// ```
     pub async fn get_map_data_backend(&self, read_only: bool) -> Result<MapData, WorldError> {
         let backend = self.get_backend_name().await?;
+        log::debug!("Backend {backend}");
         match backend.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite3" => {
@@ -139,14 +140,11 @@ impl World {
                 })?;
                 Ok(MapData::from_redis_connection_params(host, port, hash).await?)
             }
-            #[cfg(feature = "experimental-leveldb")]
+            #[cfg(feature = "leveldb")]
             "leveldb" => {
                 let World(path) = self;
                 let path = path.clone();
-                Ok(
-                    task::spawn_blocking(move || MapData::from_leveldb(path.join("map.db")))
-                        .await?,
-                )
+                Ok(MapData::from_leveldb(path.join("map.db"))?)
             }
             _ => Err(WorldError::UnknownBackend(backend)),
         }
@@ -214,6 +212,10 @@ pub enum WorldError {
     #[error("Parse int error: {0}")]
     /// Failure to parse an int from a string
     ParseIntError(#[from] std::num::ParseIntError),
+    #[error("Task join error: {0}")]
+    #[cfg(feature = "leveldb")]
+    /// Failure to join a tokio task
+    TaskJoinError(#[from] tokio::task::JoinError),
 }
 
 /// Converts a postgres connection string from keyvalue to URI

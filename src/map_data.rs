@@ -1,25 +1,34 @@
 //! Contains a type to read a world's map data
-#[cfg(feature = "experimental-leveldb")]
-use tokio::sync::{Arc, Mutex};
 use futures::future;
 use futures::stream;
 use futures::stream::BoxStream;
 use futures::stream::StreamExt;
 use futures::TryStreamExt;
-#[cfg(feature = "experimental-leveldb")]
-use leveldb_rs::{LevelDBError, DB as LevelDb};
 use log::LevelFilter;
 #[cfg(feature = "redis")]
 use redis::{aio::MultiplexedConnection as RedisConn, AsyncCommands};
+#[cfg(feature = "leveldb")]
+use rusty_leveldb::{LdbIterator, Options as LdbOptions, Status as LdbStatus, DB as LdbCon};
+#[cfg(feature = "sqlite")]
+use sqlx::query::Query;
+#[cfg(feature = "sqlite")]
+use sqlx::sqlite::SqliteArguments;
 #[cfg(feature = "sqlite")]
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqliteRow};
+#[cfg(feature = "sqlite")]
+use sqlx::Sqlite;
 #[cfg(feature = "postgres")]
 use sqlx::{postgres::PgConnectOptions, PgPool};
 #[cfg(any(feature = "sqlite", feature = "postgres"))]
 use sqlx::{prelude::*, ConnectOptions};
-#[cfg(any(feature = "sqlite", feature = "experimental-leveldb"))]
+use std::num::ParseIntError;
+#[cfg(any(feature = "sqlite", feature = "leveldb"))]
 use std::path::Path;
 use std::str::FromStr;
+#[cfg(feature = "leveldb")]
+use std::sync::Arc;
+#[cfg(feature = "leveldb")]
+use tokio::sync::Mutex;
 #[cfg(feature = "redis")]
 use url::Host;
 
@@ -51,10 +60,10 @@ pub enum MapDataError {
     /// Redis connection error
     RedisError(#[from] redis::RedisError),
 
-    #[cfg(feature = "experimental-leveldb")]
+    #[cfg(feature = "leveldb")]
     #[error("LevelDB error: {0}")]
     /// LevelDB error
-    LevelDbError(LevelDBError),
+    LevelDbError(#[from] LdbStatus),
 
     #[error("MapBlockError: {0}")]
     /// Error while reading a map block
@@ -67,6 +76,10 @@ pub enum MapDataError {
     /// An IO related error
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    /// An error while parsing a string as integer value
+    #[error("Error parsing string as integer value: {0}")]
+    ParseIntError(#[from] ParseIntError),
 }
 
 impl MapDataError {
@@ -112,8 +125,8 @@ pub enum MapData {
     },
 
     /// This variant is a thread-safe open LevelDB
-    #[cfg(feature = "experimental-leveldb")]
-    LevelDb(Arc<Mutex<LevelDb>>),
+    #[cfg(feature = "leveldb")]
+    LevelDb(Arc<Mutex<LdbCon>>),
 }
 
 impl MapData {
@@ -165,21 +178,22 @@ impl MapData {
         port: Option<u16>,
         hash: &str,
     ) -> Result<MapData, MapDataError> {
+        let port = port.map(|p| format!(":{p}")).unwrap_or_default();
+        let url = format!("redis://{host}{port}/");
+
         Ok(MapData::Redis {
-            connection: redis::Client::open(format!(
-                "redis://{host}{}/",
-                port.map(|p| format!(":{p}")).unwrap_or_default()
-            ))?
-            .get_multiplexed_tokio_connection()
-            .await?,
+            connection: redis::Client::open(url)?
+                .get_multiplexed_tokio_connection()
+                .await?,
             hash: hash.to_string(),
         })
     }
 
-    #[cfg(feature = "experimental-leveldb")]
+    #[cfg(feature = "leveldb")]
     /// Opens a local LevelDB database
     pub fn from_leveldb(leveldb_directory: impl AsRef<Path>) -> Result<MapData, MapDataError> {
-        let db = LevelDb::open(leveldb_directory.as_ref()).map_err(MapDataError::LevelDbError)?;
+        let options = LdbOptions { create_if_missing: true, ..Default::default() }; // Is currently the default, but just to be sure
+        let db = LdbCon::open(leveldb_directory, options).map_err(MapDataError::LevelDbError)?;
         Ok(MapData::LevelDb(Arc::new(Mutex::new(db))))
     }
 
@@ -187,35 +201,15 @@ impl MapData {
     ///
     /// Note that the unit of the coordinates will be
     /// [MAPBLOCK_LENGTH][`crate::map_block::MAPBLOCK_LENGTH`].
-    pub async fn all_mapblock_positions(&self) -> BoxStream<Result<Position, MapDataError>> {
+    pub async fn all_mapblock_positions<'a>(
+        &'a self,
+    ) -> BoxStream<'a, Result<Position, MapDataError>> {
         match self {
             #[cfg(feature = "sqlite")]
             MapData::Sqlite {
                 connection,
                 split_blockpos,
-            } => {
-                if *split_blockpos {
-                    sqlx::query("SELECT x, y, z FROM blocks")
-                        .try_map(|row: SqliteRow| {
-                            Ok(Position {
-                                x: row.try_get("x")?,
-                                y: row.try_get("y")?,
-                                z: row.try_get("z")?,
-                            })
-                        })
-                        .fetch(connection)
-                        .map_err(MapDataError::SqlError)
-                        .boxed()
-                } else {
-                    sqlx::query("SELECT pos FROM blocks")
-                        .try_map(|row: SqliteRow| {
-                            Ok(Position::from_database_key(row.try_get("pos")?))
-                        })
-                        .fetch(connection)
-                        .map_err(MapDataError::SqlError)
-                        .boxed()
-                }
-            }
+            } => stream_sqlite_positions(connection, *split_blockpos).await,
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query_as("SELECT posx, posy, posz FROM blocks")
                 .fetch(pool)
@@ -225,7 +219,7 @@ impl MapData {
             MapData::Redis { connection, hash } => {
                 // We can't really stream, so we'll just collect the result with hkeys
                 let positions: Result<Vec<i64>, _> =
-                    connection.clone().hkeys(hash.to_string()).await;
+                    connection.clone().hkeys(hash.to_string()).await; // might block long
                 match positions {
                     Ok(positions) => stream::iter(
                         positions
@@ -237,25 +231,27 @@ impl MapData {
                     Err(e) => stream::once(future::ready(Err(MapDataError::RedisError(e)))).boxed(),
                 }
             }
-            #[cfg(feature = "experimental-leveldb")]
+            #[cfg(feature = "leveldb")]
             MapData::LevelDb(db) =>
             // TODO Use task::spawn_blocking for this, as this blocks the thread for a longer time
             {
-                stream::iter(
-                    db.lock()
-                        .await
-                        .iter()
-                        .map_err(MapDataError::LevelDbError)?
-                        .alloc()
-                        //.inspect(|(key, _value)| println!("{key:?}"))
-                        // Now here it gets interesting. Figure out why the key's length is often 9 bytes instead of 8 bytes.
-                        .filter(|(key, _)| key.len() == 8)
-                        // And figure out why LevelDB reports corrupted blocks
-                        .map(|(key, _value)| Ok(i64::from_le_bytes(key.try_into()?)))
-                        .filter_map(|key: Result<i64, Vec<u8>>| key.ok())
-                        .map(get_integer_as_block),
-                )
-                .boxed()
+                match db.clone().lock_owned().await.new_iter() {
+                    Ok(mut iter) => {
+                        let positions: Vec<_> = std::iter::from_fn(move || iter.next())
+                            .map(|(key, _value)| {
+                                String::from_utf8_lossy(&key)
+                                    .parse::<i64>()
+                                    .map(Position::from_database_key)
+                            })
+                            .collect(); // might block long
+                        stream::iter(positions)
+                            .map_err(MapDataError::ParseIntError)
+                            .boxed()
+                    }
+                    Err(e) => {
+                        stream::once(future::ready(Err(MapDataError::LevelDbError(e)))).boxed()
+                    }
+                }
             }
         }
     }
@@ -268,18 +264,11 @@ impl MapData {
             MapData::Sqlite {
                 connection,
                 split_blockpos,
-            } => if *split_blockpos {
-                sqlx::query("SELECT data FROM blocks WHERE x = ? AND y = ? AND z = ?")
-                    .bind(pos.x)
-                    .bind(pos.y)
-                    .bind(pos.z)
-            } else {
-                sqlx::query("SELECT data FROM blocks WHERE pos = ?").bind(pos_index)
-            }
-            .fetch_one(connection)
-            .await
-            .and_then(|row| row.try_get("data"))
-            .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
+            } => get_sqlite_data_query(&pos, *split_blockpos)
+                .fetch_one(connection)
+                .await
+                .and_then(|row| row.try_get("data"))
+                .map_err(|e| MapDataError::from_sqlx_error(e, pos)),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_QUERY)
                 .bind(pos.x)
@@ -294,13 +283,16 @@ impl MapData {
                 let value: Option<_> = connection.clone().hget(hash.to_string(), pos_index).await?;
                 value.ok_or(MapDataError::MapBlockNonexistent(pos))
             }
-            #[cfg(feature = "experimental-leveldb")]
-            MapData::LevelDb(db) => Ok(db
-                .lock()
-                .await
-                .get(&pos_index.to_le_bytes())
-                .map_err(MapDataError::LevelDbError)?
-                .ok_or(MapDataError::MapBlockNonexistent(pos))?),
+            #[cfg(feature = "leveldb")]
+            MapData::LevelDb(db) => {
+                let mut db = db.lock().await;
+                let snapshot = db.get_snapshot();
+                db.get_at(&snapshot, format!("{}", pos.as_database_key()).as_bytes())
+                    .map_err(MapDataError::LevelDbError)
+                    .transpose()
+                    .unwrap_or_else(|| Err(MapDataError::MapBlockNonexistent(pos)))
+                    .map(|b| b.to_vec())
+            }
         }
     }
 
@@ -321,19 +313,12 @@ impl MapData {
             MapData::Sqlite {
                 connection,
                 split_blockpos,
-            } => if *split_blockpos {
-                sqlx::query(SQLITE_UPSERT)
-                    .bind(pos.x)
-                    .bind(pos.y)
-                    .bind(pos.z)
-            } else {
-                sqlx::query(SQLITE_UPSERT_UNIFIED_POS).bind(pos.as_database_key())
-            }
-            .bind(data)
-            .execute(connection)
-            .await
-            .map(|_| {})
-            .map_err(MapDataError::SqlError),
+            } => prepare_sqlite_upsert_query(&pos, *split_blockpos)
+                .bind(data)
+                .execute(connection)
+                .await
+                .map(|_| {})
+                .map_err(MapDataError::SqlError),
             #[cfg(feature = "postgres")]
             MapData::Postgres(pool) => sqlx::query(POSTGRES_UPSERT)
                 .bind(pos.x)
@@ -350,6 +335,12 @@ impl MapData {
                 .hset(hash, pos.as_database_key(), data)
                 .await
                 .map_err(|e| e.into()),
+            #[cfg(feature = "leveldb")]
+            MapData::LevelDb(db) => {
+                let mut db = db.clone().lock_owned().await;
+                db.put(format!("{}", pos.as_database_key()).as_bytes(), data)?;
+                Ok(())
+            }
         }
     }
 
@@ -370,6 +361,7 @@ impl MapData {
     }
 }
 
+/// Checks if the `blocks` table contains the specified column
 async fn sqlite_column_exists(pool: SqlitePool, column_name: &str) -> Result<bool, sqlx::Error> {
     Ok(sqlx::query("PRAGMA table_info(blocks)")
         .fetch_all(&pool)
@@ -377,4 +369,61 @@ async fn sqlite_column_exists(pool: SqlitePool, column_name: &str) -> Result<boo
         .iter()
         .map::<String, _>(|col| col.get("name"))
         .any(|colname| colname == column_name))
+}
+
+async fn stream_sqlite_positions<'a>(
+    connection: &'a SqlitePool,
+    split_pos: bool,
+) -> BoxStream<'a, Result<Position, MapDataError>> {
+    if split_pos {
+        sqlx::query("SELECT x, y, z FROM blocks")
+            .try_map(|row: SqliteRow| {
+                Ok(Position {
+                    x: row.try_get("x")?,
+                    y: row.try_get("y")?,
+                    z: row.try_get("z")?,
+                })
+            })
+            .fetch(connection)
+            .map_err(MapDataError::SqlError)
+            .boxed()
+    } else {
+        sqlx::query("SELECT pos FROM blocks")
+            .try_map(|row: SqliteRow| Ok(Position::from_database_key(row.try_get("pos")?)))
+            .fetch(connection)
+            .map_err(MapDataError::SqlError)
+            .boxed()
+    }
+}
+
+/// Converts a position into an SQLite statement which queries the block data
+#[cfg(feature = "sqlite")]
+fn get_sqlite_data_query<'a>(
+    pos: &'a Position,
+    split_pos: bool,
+) -> Query<'a, Sqlite, SqliteArguments<'a>> {
+    if split_pos {
+        sqlx::query("SELECT data FROM blocks WHERE x = ? AND y = ? AND z = ?")
+            .bind(pos.x)
+            .bind(pos.y)
+            .bind(pos.z)
+    } else {
+        sqlx::query("SELECT data FROM blocks WHERE pos = ?").bind(pos.as_database_key())
+    }
+}
+
+/// Returns a prepared SQLite statement for setting block data. Insert the data with `.bind()` before executing.
+#[cfg(feature = "sqlite")]
+fn prepare_sqlite_upsert_query<'a>(
+    pos: &'a Position,
+    split_pos: bool,
+) -> Query<'a, Sqlite, SqliteArguments<'a>> {
+    if split_pos {
+        sqlx::query(SQLITE_UPSERT)
+            .bind(pos.x)
+            .bind(pos.y)
+            .bind(pos.z)
+    } else {
+        sqlx::query(SQLITE_UPSERT_UNIFIED_POS).bind(pos.as_database_key())
+    }
 }

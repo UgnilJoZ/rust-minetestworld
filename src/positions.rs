@@ -15,7 +15,7 @@ use std::ops::{Add, Rem};
 /// This type is used for addressing one of the following:
 /// * voxels ([nodes](`crate::Node`), node timers, metadata, ...).
 /// * [MapBlocks](`crate::MapBlock`). In this case, all three dimensions are divided by the
-/// MapBlock [side length](`crate::MAPBLOCK_LENGTH`).
+///   MapBlock [side length](`crate::MAPBLOCK_LENGTH`).
 ///
 /// A voxel position may either be absolute or relative to a mapblock root.
 #[derive(Debug, PartialEq, Copy, Clone, Eq, Hash)]
