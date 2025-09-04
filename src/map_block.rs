@@ -446,6 +446,7 @@ fn write_name_id_mappings(mappings: &NameIdMappings, dest: &mut impl Write) -> s
     Ok(())
 }
 
+#[allow(clippy::unbuffered_bytes)] // We know this Read will be in-memory
 fn read_inventory(data: &mut impl Read) -> std::io::Result<Vec<u8>> {
     let mut result = vec![];
     let mut line = vec![];
