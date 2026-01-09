@@ -54,11 +54,12 @@ extern crate tokio;
 pub mod map_block;
 pub mod map_data;
 pub mod positions;
+pub mod reexport;
 pub mod voxel_manip;
 pub mod world;
 
 pub use map_block::MapBlock;
-pub use map_block::Node;
+pub use map_block::{IdName, Node};
 pub use map_data::MapData;
 pub use map_data::MapDataError;
 pub use positions::Position;
